@@ -63,64 +63,13 @@ if not ok then
 	error("invalid configuration file")
 end
 
-local par = Parser.new()
-local an = Analyzer.new()
-
----@param chunk Chunk
-local function minifyLocals(chunk)
-	local locals = an:getLocals(chunk:innerScope(), false)
-	local h = an:getScopes(chunk)
-	local cnt = {
-		[chunk:innerScope()] = 0
-	}
-
-	local function getLocalIndex(scope)
-		local n = cnt[scope] or getLocalIndex(h[scope])
-		cnt[scope] = n + 1
-		return n
-	end
-
-	local function getShortName(scope)
-		local name = ''
-		local idx = getLocalIndex(scope)
-		assert(idx ~= nil)
-		repeat
-			local n = (idx % 52)
-			local m = idx % 26
-			local c = n >= 26 and 65 + m or 97 + m
-			name = name .. string.char(c)
-			idx = idx - 50
-		until idx < 0
-		return name
-	end
-
-	local map = {}
-	for _, j in pairs(locals) do
-		if j.name ~= '_' then
-			local declScope = an:getScope(j.decl)
-			local newName = getShortName(declScope)
-			if not map[newName] then
-				map[newName] = {}
-			end
-			local t = map[newName]
-			t[#t + 1] = j.name
-			local tok = Token.CreateIdentifier(newName)
-			for _, l in pairs(j.refs) do
-				l:setName(tok)
-			end
-		end
-	end
-
-	return map
-end
-
 ---@param chunk string
 ---@param noCompress? boolean
 ---@return string data
 ---@return integer checksum
 ---@return boolean compressed
 local function processChunk(chunk, noCompress)
-	local locals, compact, compress
+	local compact, compress
 	compact  = config.options.minify
 	compress = config.options.compress and not noCompress
 
@@ -327,7 +276,8 @@ local function embedChunk(out, name, content, cache, noCompress)
 		close = close,
 		save = cache and "true" or "false"
 	})
-	os.sleep(0)
+	
+	if os.sleep then os.sleep(0) end
 end
 
 ---@param out file*
