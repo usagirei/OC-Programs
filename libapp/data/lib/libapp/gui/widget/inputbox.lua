@@ -293,6 +293,7 @@ end
 function InputBox:showAutocomplete(immediate)
 	self:clearAutocomplete(true)
 	if self.m_PassMode then return end
+	if not self.m_AutoCompleteCallback then return end
 
 	local text = table.concat(self.m_Buffer)
 	local function timerCallback()

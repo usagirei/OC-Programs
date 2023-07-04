@@ -46,8 +46,6 @@ function TextView:onDraw(g)
 	local hasHScroll = tRect:width() > cRect:width()
 	local hasVScroll = tRect:height() > cRect:height()
 
-	Graphics.debugPrint(tRect:width(), cRect:width())
-
 	if hasHScroll then
 		local sRect = self:scrollRectH()
 		local sSize = sRect:width()
