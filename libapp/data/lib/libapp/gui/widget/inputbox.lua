@@ -197,6 +197,29 @@ function InputBox:setBuffer(text, moveCursor)
 	end
 end
 
+---@param list string[]
+function InputBox.FilterList(list, text, max)
+	local lText = string.lower(text)
+
+	local filtered = {}
+	for i = 1, #list do
+		local ent = list[i]
+		local lEnt = string.lower(list[i])
+		local ok = lEnt ~= lText and string.find(lEnt, lText, 1) == 1
+		if ok then
+			local tLen = unicode.len(lText)
+			local eLen = unicode.len(lEnt)
+			local cEnt = unicode.sub(ent, tLen + 1, eLen)
+			filtered[#filtered + 1] = cEnt
+		end
+		if #filtered == max then
+			break
+		end
+	end
+
+	return filtered
+end
+
 ---@param callback? (fun(val:string, num:integer):table)|table # autocomplete items callback, table with values, or nil to disable
 --- if `itemSource` is a function, it will be called with the current display text and how many entries it should return, and it should return a table with the autocomplete predictions
 function InputBox:setAutoCompleteCallback(callback)
@@ -207,47 +230,36 @@ function InputBox:setAutoCompleteCallback(callback)
 	elseif type(callback) == "function" then
 		self.m_AutoCompleteCallback = callback
 	elseif type(callback) == "table" then
-		local ents = { table.unpack(callback) }
-		local function defaultCallback(text, count)
-			local lText = string.lower(text)
-
-			local valid = {}
-			for i = 1, #ents do
-				local ent = ents[i]
-				local lEnt = string.lower(ents[i])
-				local ok = lEnt ~= lText and string.find(lEnt, lText, 1) == 1
-				if ok then
-					local tLen = unicode.len(lText)
-					local eLen = unicode.len(lEnt)
-					local cEnt = unicode.sub(ent, tLen + 1, eLen)
-					valid[#valid + 1] = cEnt
-				end
-				if #valid == count then
-					break
-				end
-			end
-
-			return valid
+		self.m_AutoCompleteCallback = function(text, count)
+			return InputBox.FilterList(callback, text, count)
 		end
-		self.m_AutoCompleteCallback = defaultCallback
 	end
 end
 
 ---@return Rect
 function InputBox:overlayRect()
 	if self.m_PopupRect == nil then
-		local contentRect = self:contentRect()
+		local cRect = self:contentRect()
+
+		local lMode = self:labelMode()
+		if lMode == Enums.LabelMode.Prefix then
+			local bs = self:borderStyle()
+			local lt = self:label()
+			local lRect, _ = DrawHelper.calculateLabelRect(cRect, bs, unicode.len(lt), -1, -1, false, 0)
+			cRect = Rect.new(lRect.right + 1, cRect.top, cRect:width() - lRect:width() - 1, cRect:height())
+		end
+
 		local nPreds = #self.m_AutoCompleteTable
 		if nPreds <= 1 then
-			self.m_PopupRect = Rect.new(contentRect.left, contentRect.top, 0, 0)
+			self.m_PopupRect = Rect.new(cRect.left, cRect.top, 0, 0)
 		else
 			local maxW = 0
 			for i = 1, nPreds do
 				maxW = math.max(maxW, unicode.len(self.m_AutoCompleteTable[i]))
 			end
 
-			local x0 = contentRect.left + #self.m_Buffer
-			local y0 = contentRect.top
+			local x0 = cRect.left + #self.m_Buffer
+			local y0 = cRect.top
 
 			self.m_PopupRect = Rect.new(x0, y0 + 1, maxW, nPreds)
 			self.m_PopupRect = DrawHelper.getBorderRectForContent(self.m_PopupRect, self.m_PopupStyle)
@@ -268,7 +280,7 @@ function InputBox:acceptAutoComplete()
 		self.m_SelStart = #self.m_Buffer
 		self:setValue(table.concat(self.m_Buffer))
 	end
-	self:clearAutocomplete(true)
+	self:showAutocomplete(true)
 	self:invalidate()
 end
 
@@ -297,18 +309,19 @@ function InputBox:showAutocomplete(immediate)
 
 	local text = table.concat(self.m_Buffer)
 	local function timerCallback()
-		if #text > 0 then
-			local listRect = DrawHelper.getContentRectForBorder(self:overlayRect(), self.m_PopupStyle)
-			local rv = self.m_AutoCompleteCallback(text, listRect:height()) or {}
-			if #rv > self.m_PopupSize then
-				local clip = math.min(#self.m_AutoCompleteTable, self.m_PopupSize)
-				rv = { table.unpack(rv, 1, clip) }
-			end
-			self.m_AutoCompleteTable = rv
-			self.m_AutoCompleteIndex = 1
-			self:invalidateRects()
-			self:invalidate()
+		local _, u, _, d = DrawHelper.getBorderSizes(self.m_PopupStyle)
+		local maxH = self.m_PopupSize - u - d
+
+		local rv = self.m_AutoCompleteCallback(text, maxH) or {}
+		if #rv > maxH then
+			local clip = math.min(#rv, maxH)
+			rv = { table.unpack(rv, 1, clip) }
 		end
+		self.m_AutoCompleteTable = rv
+		self.m_AutoCompleteIndex = 1
+		self:invalidateRects()
+		self:invalidate()
+
 		self.m_AutoCompleteTimerId = nil
 		return false
 	end
@@ -328,14 +341,14 @@ end
 ---@param overlay boolean # is overlay
 ---@protected
 function InputBox:onClick(scr, p, btn, times, usr, overlay)
+	if btn == 1 then
+		self:setBuffer("")
+		self:setValue("")
+		self:validateText("")
+		self:clearAutocomplete(true)
+		self:invalidate()
+	end
 	if self:focused() then
-		if btn == 1 then
-			self:setBuffer("")
-			self:validateText("")
-			self:clearAutocomplete(true)
-			self:invalidate()
-			return true
-		end
 		if overlay then
 			local rOver = self:overlayRect()
 			local newIdx = math.floor(math.min(#self.m_AutoCompleteTable, math.max(0, p.y - rOver.top) + 1))
@@ -471,9 +484,8 @@ function InputBox:onFocusGot()
 	self:setBuffer(text, true)
 	if text == nil or text == "" then
 		self.m_SelStart = 0
-	else
-		self:showAutocomplete(true)
 	end
+	self:showAutocomplete(true)
 end
 
 ---@protected
