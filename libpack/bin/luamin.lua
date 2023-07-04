@@ -7,6 +7,10 @@ local Token = require("libpack.tokenizer.token")
 
 local Args, Opts = shell.parse(...)
 
+local function print(...)
+    io.stderr:write(table.concat({ ... }, '\t'))
+end
+
 if Opts.h or Opts.help then
     local script = os.getenv("_")
     local name = fs.name(script)
@@ -20,6 +24,8 @@ if Opts.h or Opts.help then
     print(msg)
     return
 end
+
+local Locals = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 ---@param an Analyzer
 ---@param chunk Chunk
@@ -37,17 +43,29 @@ local function renameLocals(an, chunk)
     end
 
     local function getShortName(scope)
-        local name = ''
         local idx = getLocalIndex(scope)
+        local n = idx
         assert(idx ~= nil)
-        repeat
-            local n = (idx % 52)
-            local m = idx % 26
-            local c = n >= 26 and 65 + m or 97 + m
-            name = name .. string.char(c)
-            idx = idx - 50
-        until idx < 0
-        return name
+        local buf = {}
+        if idx >= #Locals then
+            while true do
+                if idx >= #Locals then
+                    local mod = idx % #Locals
+                    idx = idx // #Locals
+                    table.insert(buf, 1, mod)
+                else
+                    table.insert(buf, 1, idx)
+                    break
+                end
+            end
+            for i = 2, #buf do buf[i] = buf[i] + 1 end
+        else
+            buf[1] = idx + 1
+        end
+        for i = 1, #buf do buf[i] = Locals:byte(buf[i]) end
+
+        local q = string.char(table.unpack(buf))
+        return q
     end
 
     local map = {}
