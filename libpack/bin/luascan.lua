@@ -8,25 +8,16 @@ if Opts.p == nil then
     local name = fs.name(script)
 
     local msg =
-    [[Usage: %s --p=<package_1,...,package_n> [-z] [-m] [-l] [--o <output>] <script> [<arg1> <arg2> ... <argn>]
+    [[Usage: %s --p=<package_1,...,package_n> [-z] [-m] [--o=<output>] <script> [<arg1> <arg2> ... <argn>]
     Executes a script intercepting require calls, creates a .luapack definition
         --p packages to bundle - use ? as a wildcard, e.g packagea,packageb?,packagec.sub?
         --o output file, defaults to '<input>.bundle.lua'
         -z apply lz4 compression to bundled files, defaults to false
-        -l rename locals, defaults to false
         -m minify bundled files, defaults to false
 ]]
     msg = msg:format(name)
     print(msg)
     return
-end
-
-local function print(...)
-    local x = table.pack(...)
-    for i = 1, x.n do
-        io.stderr:write(x[i], '\t')
-    end
-    io.stderr:write('\n')
 end
 
 local Script = shell.resolve(Args[1])
@@ -125,7 +116,6 @@ end
 local of = io.open(OutFile, "w")
 if not of then error("failed to open .luapack file for writing") end
 
-if Opts.l then of:write("option, locals", '\n') end
 if Opts.m then of:write("option, minify", '\n') end
 if Opts.z then of:write("option, compress", '\n') end
 

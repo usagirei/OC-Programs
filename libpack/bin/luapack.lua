@@ -121,19 +121,27 @@ end
 ---@return boolean compressed
 local function processChunk(chunk, noCompress)
 	local locals, compact, compress
-	locals   = config.options.locals
 	compact  = config.options.minify
 	compress = config.options.compress and not noCompress
 
 	---------------------------------------
 
-	if locals or compact then
-		local c = par:parseChunk(chunk)
-		if locals then
-			print("\t renaming locals...")
-			minifyLocals(c)
-		end
-		chunk = an:dump(c, not compact, nil)
+	if compact then
+		local tmp = "/tmp/luapack.min.lua"
+		local cmd = string.format("luamin > '%s'", tmp)
+
+		local p = io.popen(cmd, "w")
+		if not p then error("failed to open luamin") end
+		print("\tminifying...")
+		p:write(chunk)
+		p:close()
+
+		local f = io.open(tmp, "r")
+		if not f then error("failed to open minified output") end
+		local m = f:read("a")
+		f:close()
+
+		chunk = m
 	end
 
 	---------------------------------------
@@ -141,17 +149,17 @@ local function processChunk(chunk, noCompress)
 	local chk, cok = 0, false
 	if compress then
 		print("\t compressing...")
-		local a, b = lz4.lz4_encode(chunk)
-		if a then
-			assert(lz4.lz4_decode(a) == chunk)
-			chunk = z85.z85_encode(a)
-			assert(z85.z85_decode(chunk) == a)
-			cok = true
-			chk = b
-		end
-	end
+		local lzStr
+		lzStr, chk = lz4.lz4_encode(chunk)
+		if lzStr then
+			assert(lz4.lz4_decode(lzStr) == chunk)
 
-	if not compress then
+			local aStr = z85.z85_encode(lzStr)
+			assert(z85.z85_decode(aStr) == lzStr)
+
+			chunk = aStr
+		end
+	else
 		local p = 0x01000193
 		local h = 0x811C9DC5
 		for i = 1, #chunk do
@@ -304,7 +312,7 @@ local function embedChunk(out, name, content, cache, noCompress)
 	local eq = ''
 	if eq1 or eq2 then
 		local n = math.max(eq1 and #eq1 or 0, eq2 and #eq2 or 0) - 2
-		eq = string.rep('=', n+1)
+		eq = string.rep('=', n + 1)
 	end
 	open = '[' .. eq .. '['
 	close = ']' .. eq .. ']'
