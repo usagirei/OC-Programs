@@ -276,7 +276,7 @@ local function embedChunk(out, name, content, cache, noCompress)
 		close = close,
 		save = cache and "true" or "false"
 	})
-	
+
 	if os.sleep then os.sleep(0) end
 end
 

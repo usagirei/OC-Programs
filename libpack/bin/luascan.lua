@@ -3,13 +3,14 @@ local shell = require('shell')
 
 local Args, Opts = shell.parse(...)
 
-if Opts.p == nil then
+if Opts.p == nil or (Opts.h or Opts.help) then
     local script = os.getenv("_")
     local name = fs.name(script)
 
     local msg =
     [[Usage: %s --p=<package_1,...,package_n> [-z] [-m] [--o=<output>] <script> [<arg1> <arg2> ... <argn>]
     Executes a script intercepting require calls, creates a .luapack definition
+        --help|-h\tprints this message
         --p packages to bundle - use ? as a wildcard, e.g packagea,packageb?,packagec.sub?
         --o output file, defaults to '<input>.bundle.lua'
         -z apply lz4 compression to bundled files, defaults to false

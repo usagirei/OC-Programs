@@ -17,6 +17,7 @@ if Opts.h or Opts.help then
 
     local msg = [[Usage: %s [<script>] [--o=<output>|-o]
     Minifies the target lua script, if no input is passed, chunk data is read from stdin
+    Outputs to stdout unless -o is passed
         --help|-h\tprints this message
         --o|-o\toutput file, defaults to '<input>.min.lua' if no value is passed
 ]]
@@ -44,7 +45,6 @@ local function renameLocals(an, chunk)
 
     local function getShortName(scope)
         local idx = getLocalIndex(scope)
-        local n = idx
         assert(idx ~= nil)
         local buf = {}
         if idx >= #Locals then
@@ -63,7 +63,6 @@ local function renameLocals(an, chunk)
             buf[1] = idx + 1
         end
         for i = 1, #buf do buf[i] = Locals:byte(buf[i]) end
-
         local q = string.char(table.unpack(buf))
         return q
     end
