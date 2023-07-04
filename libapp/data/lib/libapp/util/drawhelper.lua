@@ -3,237 +3,297 @@ local lib = {}
 local Rect = require("libapp.struct.rect")
 local Enums = require("libapp.enums")
 
-local c = require("libapp.styles")
-function lib.progressbar(e, f, g, h, i, j, k)
-    local l = lib.selectSubStyle4way(i, h)
-    local m = #l
-    local n = false
-    if type(l[#l]) == "boolean" then
-        n = l[#l]
-        m = m - 1
+---@param gr Graphics
+---@param area Rect
+---@param value number
+---@param dir Direction4
+---@param style ProgressBarStyle
+---@param fg integer
+---@param bg integer
+---@return Rect rZero
+---@return Rect rFrac
+---@return Rect rOne
+function lib.progressbar(gr, area, value, dir, style, fg, bg)
+    local subStyle = lib.selectSubStyle4way(style, dir)
+    local frames = #subStyle
+    local invCol = false
+    if type(subStyle[#subStyle]) == "boolean" then
+        invCol = subStyle[#subStyle]
+        frames = frames - 1
     end
-    local o, p, q, r = lib.calculateProgressRects(f, g, h, m)
-    local s = l[m]
-    local t = l[r]
-    local u = l[1]
-    e:pushClip(f)
-    if n then
-        e:setColors(k, j)
+    local rZero, rFrac, rOne, r = lib.calculateProgressRects(area, value, dir, frames)
+    local s = subStyle[frames]
+    local t = subStyle[r]
+    local u = subStyle[1]
+    gr:pushClip(area)
+    if invCol then
+        gr:setColors(bg, fg)
     else
-        e:setColors(j, k)
+        gr:setColors(fg, bg)
     end
-    e:fillRect(o, s)
-    e:fillRect(p, t)
-    e:fillRect(q, u)
-    e:popClip()
-    return o, p, q
+    gr:fillRect(rZero, s)
+    gr:fillRect(rFrac, t)
+    gr:fillRect(rOne, u)
+    gr:popClip()
+    return rZero, rFrac, rOne
 end
 
-function lib.trackbar(f, g, h, i, j, k, l, m, n, o)
-    n = n or l
-    o = o or m
-    local p = lib.selectSubStyle4way(k, j)
-    local q = false
-    if type(p[#p]) == "boolean" then
-        q = p[#p]
+---@param gr Graphics
+---@param rect Rect
+---@param thumbSize integer
+---@param scroll number
+---@param dir Direction4
+---@param style TrackStyle
+---@param thumbFg any
+---@param thumbBg any
+---@param trackFg any
+---@param trackBg any
+function lib.trackbar(gr, rect, thumbSize, scroll, dir, style, thumbFg, thumbBg, trackFg, trackBg)
+    trackFg = trackFg or thumbFg
+    trackBg = trackBg or thumbBg
+    local subStyle = lib.selectSubStyle4way(style, dir)
+    local invCol = false
+    if type(subStyle[#subStyle]) == "boolean" then
+        invCol = subStyle[#subStyle]
     end
-    local r, s, t = lib.calculateTrackRects(g, i, j, h)
-    local u = p[1]
-    local v = p[2]
-    local w = p[3]
-    f:pushClip(g)
-    if q then
-        f:setColors(o, n)
+    local rZero, rThumb, rOne = lib.calculateTrackRects(rect, scroll, dir, thumbSize)
+    local cZero = subStyle[1]
+    local cThumb = subStyle[2]
+    local cOne = subStyle[3]
+    gr:pushClip(rect)
+    if invCol then
+        gr:setColors(trackBg, trackFg)
     else
-        f:setColors(n, o)
+        gr:setColors(trackFg, trackBg)
     end
-    f:fillRect(r, u)
-    f:fillRect(t, w)
-    if q then
-        f:setColors(m, l)
+    gr:fillRect(rZero, cZero)
+    gr:fillRect(rOne, cOne)
+    if invCol then
+        gr:setColors(thumbBg, thumbFg)
     else
-        f:setColors(l, m)
+        gr:setColors(thumbFg, thumbBg)
     end
-    f:fillRect(s, v)
-    f:popClip()
-    return r, s, t
+    gr:fillRect(rThumb, cThumb)
+    gr:popClip()
+    return rZero, rThumb, rOne
 end
 
-function lib.getContentRectForBorder(g, h)
-    if not h then
-        return g
+---@param rect Rect
+---@param border BorderStyle
+function lib.getContentRectForBorder(rect, border)
+    if not border then
+        return rect
     else
-        local i = #h[1] > 0 and 1 or 0
-        local j = #h[2] > 0 and 1 or 0
-        local k = #h[3] > 0 and 1 or 0
-        local l = #h[4] > 0 and 1 or 0
-        return Rect.new(g:x() + i, g:y() + k, g:width() - i - j, g:height() - k - l)
+        local l, u, r, d = lib.getBorderSizes(border)
+        return Rect.new(rect:x() + l, rect:y() + u, rect:width() - l - r, rect:height() - u - d)
     end
 end
 
-function lib.getBorderSizes(h)
-    if h == nil then
+---@param border BorderStyle
+---@return integer left
+---@return integer up
+---@return integer right
+---@return integer down
+function lib.getBorderSizes(border)
+    if border == nil then
         return 0, 0, 0, 0
     end
-    local i = #h[1] > 0 and 1 or 0
-    local j = #h[2] > 0 and 1 or 0
-    local k = #h[3] > 0 and 1 or 0
-    local l = #h[4] > 0 and 1 or 0
-    return i, k, j, l
+    local l = #border[1] > 0 and 1 or 0
+    local r = #border[2] > 0 and 1 or 0
+    local u = #border[3] > 0 and 1 or 0
+    local d = #border[4] > 0 and 1 or 0
+    return l, u, r, d
 end
 
-function lib.getBorderRectForContent(i, j)
-    if not j then
-        return i
+---@param rect Rect
+---@param border BorderStyle
+function lib.getBorderRectForContent(rect, border)
+    if not border then
+        return rect
     else
-        local k, l, m, n = lib.getBorderSizes(j)
-        return Rect.new(i:x() - k, i:y() - l, i:width() + k + m, i:height() + l + n)
+        local l, u, r, d = lib.getBorderSizes(border)
+        return Rect.new(rect:x() - l, rect:y() - u, rect:width() + l + r, rect:height() + u + d)
     end
 end
 
-function lib.alignRect(j, k, l, m, n)
-    local o, p
-    if k <= 0 then
-        o = j.left
-        k = j:width()
-    elseif m < 0 then
-        o = j.left
-    elseif m > 0 then
-        o = j.right - k
+---@param rect Rect
+---@param cW integer
+---@param cH integer
+---@param xA Alignment
+---@param yA Alignment
+function lib.alignRect(rect, cW, cH, xA, yA)
+    local x, y
+    if cW <= 0 then
+        x = rect.left
+        cW = rect:width()
+    elseif xA < 0 then
+        x = rect.left
+    elseif xA > 0 then
+        x = rect.right - cW
     else
-        o = (j.left + j.right - k) // 2
+        x = (rect.left + rect.right - cW) // 2
     end
-    if l <= 0 then
-        p = j.top
-        l = j:height()
-    elseif n < 0 then
-        p = j.top
-    elseif n > 0 then
-        p = j.bottom - l
+
+    if cH <= 0 then
+        y = rect.top
+        cH = rect:height()
+    elseif yA < 0 then
+        y = rect.top
+    elseif yA > 0 then
+        y = rect.bottom - cH
     else
-        p = (j.top + j.bottom - l) // 2
+        y = (rect.top + rect.bottom - cH) // 2
     end
-    return Rect.new(o, p, k, l)
+
+    return Rect.new(x, y, cW, cH)
 end
 
-function lib.calculateLabelRect(k, l, m, n, o, p, q)
-    local r = k.left
-    local s = k.right
-    local t = k.top
-    local u = k.bottom
-    local v, w
-    local x = lib.isLabelInsideBorder(l, n, o, p)
-    if x then
-        local y, z, A, B = lib.getBorderSizes(l)
-        if p then
-            t = t + z
-            u = u - B
-            m = math.min(m, u - t - q)
+---@param rect Rect
+---@param border BorderStyle
+---@param sz integer
+---@param xA Alignment
+---@param yA Alignment
+---@param vert boolean
+---@param padding integer
+---@return Rect
+---@return integer
+function lib.calculateLabelRect(rect, border, sz, xA, yA, vert, padding)
+    local x0 = rect.left
+    local x1 = rect.right
+    local y0 = rect.top
+    local y1 = rect.bottom
+
+    local x, y
+    local inBorder = lib.isLabelInsideBorder(border, xA, yA, vert)
+    if inBorder then
+        local l, u, r, d = lib.getBorderSizes(border)
+        if vert then
+            y0 = y0 + u
+            y1 = y1 - d
+            sz = math.min(sz, y1 - y0 - padding)
         else
-            r = r + y
-            s = s - A
-            m = math.min(m, s - r - q)
+            x0 = x0 + l
+            x1 = x1 - r
+            sz = math.min(sz, x1 - x0 - padding)
         end
     end
-    if p then
-        if n < 0 then
-            v = r
-        elseif n > 0 then
-            v = s - 1
+
+    if vert then
+        if xA < 0 then
+            x = x0
+        elseif xA > 0 then
+            x = x1 - 1
         else
-            v = (r + s) // 2
+            x = (x0 + x1) // 2
         end
-        if o < 0 then
-            w = t + q
-        elseif o > 0 then
-            w = u - m - q
+        if yA < 0 then
+            y = y0 + padding
+        elseif yA > 0 then
+            y = y1 - sz - padding
         else
-            w = (t + u - m) // 2
+            y = (y0 + y1 - sz) // 2
         end
     else
-        if n == -1 then
-            v = r + q
-        elseif n == 1 then
-            v = s - m - q
+        if xA == -1 then
+            x = x0 + padding
+        elseif xA == 1 then
+            x = x1 - sz - padding
         else
-            v = (r + s - m) // 2
+            x = (x0 + x1 - sz) // 2
         end
-        if o == -1 then
-            w = t
-        elseif o == 1 then
-            w = u - 1
+        if yA == -1 then
+            y = y0
+        elseif yA == 1 then
+            y = y1 - 1
         else
-            w = (t + u) // 2
+            y = (y0 + y1) // 2
         end
     end
-    if p then
-        return Rect.new(v, w, 1, m), m
+
+    if vert then
+        return Rect.new(x, y, 1, sz), sz
     else
-        return Rect.new(v, w, m, 1), m
+        return Rect.new(x, y, sz, 1), sz
     end
 end
 
-function lib.calculateProgressRects(l, m, n, o)
-    local p, q, r
-    local s
-    if n == Enums.Direction4.Right then
-        local t = l:width()
-        p, q, r, s = lib.calculateProgressSizes(m, t, o)
-    elseif n == Enums.Direction4.Left then
-        local u = l:width()
-        p, q, r, s = lib.calculateProgressSizes(m, u, o)
-    elseif n == Enums.Direction4.Up then
-        local v = l:height()
-        p, q, r, s = lib.calculateProgressSizes(m, v, o)
-    elseif n == Enums.Direction4.Down then
-        local w = l:height()
-        p, q, r, s = lib.calculateProgressSizes(m, w, o)
+---@param rect Rect
+---@param value number
+---@param dir Direction4
+---@param frames integer
+---@return Rect rZero
+---@return Rect rFrac
+---@return Rect rOne
+---@return integer sz
+function lib.calculateProgressRects(rect, value, dir, frames)
+    local sZero, sFrac, sOne
+    local frame
+    if dir == Enums.Direction4.Right then
+        local sz = rect:width()
+        sZero, sFrac, sOne, frame = lib.calculateProgressSizes(value, sz, frames)
+    elseif dir == Enums.Direction4.Left then
+        local sz = rect:width()
+        sZero, sFrac, sOne, frame = lib.calculateProgressSizes(value, sz, frames)
+    elseif dir == Enums.Direction4.Up then
+        local sz = rect:height()
+        sZero, sFrac, sOne, frame = lib.calculateProgressSizes(value, sz, frames)
+    elseif dir == Enums.Direction4.Down then
+        local sz = rect:height()
+        sZero, sFrac, sOne, frame = lib.calculateProgressSizes(value, sz, frames)
     else
-        error(string.format("invalid direction: %d", n))
+        error(string.format("invalid direction: %d", dir))
     end
-    local x, y, z = lib.splitTrackRect(l, n, p, q, r)
-    return x, y, z, s
+    local rZero, rFrac, rOne = lib.splitTrackRect(rect, dir, sZero, sFrac, sOne)
+    return rZero, rFrac, rOne, frame
 end
 
-function lib.calculateTrackRects(m, n, o, p)
-    local q, r
-    if o == Enums.Direction4.Right then
-        local s = m:width()
-        q, r = lib.calculateTrackSizes(n, s, p)
-    elseif o == Enums.Direction4.Left then
-        local t = m:width()
-        q, r = lib.calculateTrackSizes(n, t, p)
-    elseif o == Enums.Direction4.Up then
-        local u = m:height()
-        q, r = lib.calculateTrackSizes(n, u, p)
-    elseif o == Enums.Direction4.Down then
-        local v = m:height()
-        q, r = lib.calculateTrackSizes(n, v, p)
+---@param rect Rect
+---@param scroll number
+---@param dir Direction4
+---@param thumbSize integer
+function lib.calculateTrackRects(rect, scroll, dir, thumbSize)
+    local zero, one
+    if dir == Enums.Direction4.Right then
+        local sz = rect:width()
+        zero, one = lib.calculateTrackSizes(scroll, sz, thumbSize)
+    elseif dir == Enums.Direction4.Left then
+        local sz = rect:width()
+        zero, one = lib.calculateTrackSizes(scroll, sz, thumbSize)
+    elseif dir == Enums.Direction4.Up then
+        local sz = rect:height()
+        zero, one = lib.calculateTrackSizes(scroll, sz, thumbSize)
+    elseif dir == Enums.Direction4.Down then
+        local sz = rect:height()
+        zero, one = lib.calculateTrackSizes(scroll, sz, thumbSize)
     else
-        error(string.format("invalid direction: %d", o))
+        error(string.format("invalid direction: %d", dir))
     end
-    local w, x, y = lib.splitTrackRect(m, o, q, p, r)
-    return w, x, y
+    local rZero, rThumb, rOne = lib.splitTrackRect(rect, dir, zero, thumbSize, one)
+    return rZero, rThumb, rOne
 end
 
-function lib.isLabelInsideBorder(n, o, p, q)
-    if not n then
+---@param border any
+---@param xA any
+---@param yA any
+---@param vert any
+function lib.isLabelInsideBorder(border, xA, yA, vert)
+    if not border then
         return false
     end
     local r
-    if q then
-        if o < 0 then
-            r = #(n[1]) > 0
-        elseif o > 0 then
-            r = #(n[2]) > 0
+    if vert then
+        if xA < 0 then
+            r = #(border[1]) > 0
+        elseif xA > 0 then
+            r = #(border[2]) > 0
         else
             r = false
         end
     else
-        if p < 0 then
-            r = #(n[3]) > 0
-        elseif p > 0 then
-            r = #(n[4]) > 0
+        if yA < 0 then
+            r = #(border[3]) > 0
+        elseif yA > 0 then
+            r = #(border[4]) > 0
         else
             r = false
         end
@@ -241,46 +301,53 @@ function lib.isLabelInsideBorder(n, o, p, q)
     return r
 end
 
-function lib.selectDecorator(o, p, q, r, s)
-    local t = lib.isLabelInsideBorder(o, q, r, s)
-    local u
-    if t then
-        if s then
-            if q < 0 then
-                u = lib.selectSubStyle4way(p, Enums.Direction4.Left)
-            elseif q > 0 then
-                u = lib.selectSubStyle4way(p, Enums.Direction4.Right)
+---@param border BorderStyle
+---@param decor DecoratorStyle
+---@param xA Alignment
+---@param yA Alignment
+---@param vert boolean
+function lib.selectDecorator(border, decor, xA, yA, vert)
+    local inBorder = lib.isLabelInsideBorder(border, xA, yA, vert)
+    local subStyle
+    if inBorder then
+        if vert then
+            if xA < 0 then
+                subStyle = lib.selectSubStyle4way(decor, Enums.Direction4.Left)
+            elseif xA > 0 then
+                subStyle = lib.selectSubStyle4way(decor, Enums.Direction4.Right)
             end
         else
-            if r < 0 then
-                u = lib.selectSubStyle4way(p, Enums.Direction4.Up)
-            elseif r > 0 then
-                u = lib.selectSubStyle4way(p, Enums.Direction4.Down)
+            if yA < 0 then
+                subStyle = lib.selectSubStyle4way(decor, Enums.Direction4.Up)
+            elseif yA > 0 then
+                subStyle = lib.selectSubStyle4way(decor, Enums.Direction4.Down)
             end
         end
     end
-    if u == nil then
+    if subStyle == nil then
         return "", "", false
     end
-    if #u ~= 3 then
+    if #subStyle ~= 3 then
         error('invalid decorator', 2)
     end
-    return u[1], u[2], u[3]
+    return subStyle[1], subStyle[2], subStyle[3]
 end
 
-function lib.selectSubStyle4way(p, q)
+---@param style table
+---@param dir Direction4
+function lib.selectSubStyle4way(style, dir)
     local r
-    if q == Enums.Direction4.Left then
-        r = p['left']
-    elseif q == Enums.Direction4.Right then
-        r = p['right']
-    elseif q == Enums.Direction4.Up then
-        r = p['up']
-    elseif q == Enums.Direction4.Down then
-        r = p['down']
+    if dir == Enums.Direction4.Left then
+        r = style['left']
+    elseif dir == Enums.Direction4.Right then
+        r = style['right']
+    elseif dir == Enums.Direction4.Up then
+        r = style['up']
+    elseif dir == Enums.Direction4.Down then
+        r = style['down']
     end
     if type(r) == "string" then
-        r = p[r]
+        r = style[r]
     end
     if type(r) ~= "table" then
         error('invalid style: ' .. type(r), 2)
@@ -288,15 +355,17 @@ function lib.selectSubStyle4way(p, q)
     return r
 end
 
-function lib.selectSubStyle2way(q, r)
+---@param style table
+---@param dir Direction2
+function lib.selectSubStyle2way(style, dir)
     local s
-    if r == Enums.Direction2.Horizontal then
-        s = q['left'] or q['right']
-    elseif r == Enums.Direction2.Vertical then
-        s = q['up'] or q['down']
+    if dir == Enums.Direction2.Horizontal then
+        s = style['left'] or style['right']
+    elseif dir == Enums.Direction2.Vertical then
+        s = style['up'] or style['down']
     end
     if type(s) == "string" then
-        s = q[s]
+        s = style[s]
     end
     if type(s) ~= "table" then
         error('invalid style', 2)
@@ -304,74 +373,96 @@ function lib.selectSubStyle2way(q, r)
     return s
 end
 
-function lib.calculateScrollParams(r, s, t)
-    local u = math.max(1, math.floor((t * s / r) + 0.5))
-    local v = (r - s) / (s - u)
-    return u, v
+---@param cSize integer
+---@param vSize integer
+---@param sSize integer
+---@return integer thumbSize
+---@return number scrollStep
+function lib.calculateScrollParams(cSize, vSize, sSize)
+    local thumb = math.max(1, math.floor((sSize * vSize / cSize) + 0.5))
+    local step = (cSize - vSize) / (vSize - thumb)
+    return thumb, step
 end
 
-function lib.calculateProgressSizes(s, t, u)
-    local v = s * t
-    local w = math.floor(v)
-    local x = v - w
-    local y = u - 1
-    local z = math.floor(x * y + 0.5)
-    local A = 1
-    local B = w
-    local C = t - w - A
-    if B >= t then
-        B = t - A
+---@param fVal number
+---@param sz integer
+---@param frames integer
+---@return integer szZero
+---@return integer szFrac
+---@return integer szOne
+---@return integer fracIdx
+function lib.calculateProgressSizes(fVal, sz, frames)
+    local fSz = fVal * sz
+    local iSz = math.floor(fSz)
+
+    local x = fSz - iSz
+    local y = frames - 1
+    local fracIdx = math.floor(x * y + 0.5)
+
+    local szFrac = 1
+    local szZero = iSz
+    local szOne = sz - iSz - szFrac
+    if szZero >= sz then
+        szZero = sz - szFrac
     end
-    if C < 0 then
-        C = 0
-        z = u - 1
+    if szOne < 0 then
+        szOne = 0
+        fracIdx = y
     end
-    return B, A, C, z + 1
+    return szZero, szFrac, szOne, fracIdx + 1
 end
 
-function lib.calculateTrackSizes(t, u, v)
-    local w = (u - v)
-    local x = t * w
-    local y = math.floor(x + 0.5)
-    local z = y
-    local A = w - z
-    return z, A
+---@param scroll number
+---@param size integer
+---@param thumb integer
+function lib.calculateTrackSizes(scroll, size, thumb)
+    local rem = (size - thumb)
+    local fVal = scroll * rem
+    local zero = math.floor(fVal + 0.5)
+    local one = rem - zero
+    return zero, one
 end
 
-function lib.splitTrackRect(u, v, w, x, y)
-    local z = w + x + y
-    local A, B, C, D
-    if v == Enums.Direction4.Right then
-        local E = u:height()
-        D = u:width()
-        A = Rect.new(u.left, u.top, w, E)
-        B = Rect.new(A.right, u.top, x, E)
-        C = Rect.new(B.right, u.top, y, E)
-    elseif v == Enums.Direction4.Left then
-        local F = u:height()
-        D = u:width()
-        A = Rect.new(u.right - w, u.top, w, F)
-        B = Rect.new(A.left - x, u.top, x, F)
-        C = Rect.new(B.left - y, u.top, y, F)
-    elseif v == Enums.Direction4.Up then
-        local G = u:width()
-        D = u:height()
-        A = Rect.new(u.left, u.bottom - w, G, w)
-        B = Rect.new(u.left, A.top - x, G, x)
-        C = Rect.new(u.left, B.top - y, G, y)
-    elseif v == Enums.Direction4.Down then
-        local H = u:width()
-        D = u:height()
-        A = Rect.new(u.left, u.top, H, w)
-        B = Rect.new(u.left, A.bottom, H, x)
-        C = Rect.new(u.left, B.bottom, H, y)
+---@param rect Rect
+---@param dir Direction4
+---@param zero integer
+---@param frac integer
+---@param one integer
+function lib.splitTrackRect(rect, dir, zero, frac, one)
+    local total = zero + frac + one
+    local rZero, rFrac, rOne, sz
+
+    if dir == Enums.Direction4.Right then
+        local h = rect:height()
+        sz = rect:width()
+        rZero = Rect.new(rect.left, rect.top, zero, h)
+        rFrac = Rect.new(rZero.right, rect.top, frac, h)
+        rOne = Rect.new(rFrac.right, rect.top, one, h)
+    elseif dir == Enums.Direction4.Left then
+        local h = rect:height()
+        sz = rect:width()
+        rZero = Rect.new(rect.right - zero, rect.top, zero, h)
+        rFrac = Rect.new(rZero.left - frac, rect.top, frac, h)
+        rOne = Rect.new(rFrac.left - one, rect.top, one, h)
+    elseif dir == Enums.Direction4.Up then
+        local w = rect:width()
+        sz = rect:height()
+        rZero = Rect.new(rect.left, rect.bottom - zero, w, zero)
+        rFrac = Rect.new(rect.left, rZero.top - frac, w, frac)
+        rOne = Rect.new(rect.left, rFrac.top - one, w, one)
+    elseif dir == Enums.Direction4.Down then
+        local w = rect:width()
+        sz = rect:height()
+        rZero = Rect.new(rect.left, rect.top, w, zero)
+        rFrac = Rect.new(rect.left, rZero.bottom, w, frac)
+        rOne = Rect.new(rect.left, rFrac.bottom, w, one)
     else
-        error(string.format("invalid direction: %d", v))
+        error(string.format("invalid direction: %d", dir))
     end
-    if (z ~= D) then
-        error(string.format("sum of sizes is different than area size: %d+%d+%d = %d != %d", w, x, y, z, D))
+    if (total ~= sz) then
+        error(string.format("sum of sizes is different than area size: %d+%d+%d = %d != %d", zero, frac, one, total, sz))
     end
-    return A, B, C
+    return rZero, rFrac, rOne
 end
 
 return lib
