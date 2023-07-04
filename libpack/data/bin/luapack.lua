@@ -107,6 +107,7 @@ local function processChunk(chunk, noCompress)
 			assert(z85.z85_decode(aStr) == lzStr)
 
 			chunk = aStr
+			cok = true
 		end
 	else
 		local p = 0x01000193
