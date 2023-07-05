@@ -1,16 +1,9 @@
-local Parser = require("libpack.parser")
-local Class = require("libpack.class")
-local lz4 = require("libpack.lz4")
-local Analyzer = require("libpack.analyzer")
-local Token = require("libpack.tokenizer.token")
-local z85 = require("libpack.z85")
-
-local cfg = io.open("./.luapack", "r")
-if not cfg then
-	error("missing .luapack file")
-end
-
 local function readConfig()
+	local cfg = io.open("./.luapack", "r")
+	if not cfg then
+		error("missing .luapack file")
+	end
+
 	local config = {
 		input = nil,
 		output = nil,
@@ -52,79 +45,39 @@ local function readConfig()
 	return config
 end
 
-local function print(...)
-	local v = table.pack(...)
-	local l = table.concat(v, '\t')
-	io.stderr:write(l, '\n')
-end
-
-local ok, config = pcall(readConfig)
-if not ok then
+local configOK, config = pcall(readConfig)
+if not configOK then
 	error("invalid configuration file")
 end
 
----@param chunk string
----@param noCompress? boolean
----@return string data
----@return integer checksum
----@return boolean compressed
-local function processChunk(chunk, noCompress)
-	local compact, compress
-	compact  = config.options.minify
-	compress = config.options.compress and not noCompress
+local function fileExists(path)
+	local f = io.open(path, "r")
+	if not f then return false end
+	f:close()
+	return true
+end
 
-	---------------------------------------
+---@param path string
+local function readFile(path)
+	local f = io.open(path, "r")
+	if not f then error("failed to open file for reading: " .. path) end
+	local d = f:read("a")
+	f:close()
+	return d
+end
 
-	if compact then
-		local tmp = "/tmp/luapack.min.lua"
-		local cmd = string.format("luamin > '%s'", tmp)
-
-		local p = io.popen(cmd, "w")
-		if not p then error("failed to open luamin") end
-		print("\tminifying...")
-		p:write(chunk)
-		p:close()
-
-		local f = io.open(tmp, "r")
-		if not f then error("failed to open minified output") end
-		local m = f:read("a")
-		f:close()
-
-		chunk = m
-	end
-
-	---------------------------------------
-
-	local chk, cok = 0, false
-	if compress then
-		print("\t compressing...")
-		local lzStr
-		lzStr, chk = lz4.lz4_encode(chunk)
-		if lzStr then
-			assert(lz4.lz4_decode(lzStr) == chunk)
-
-			local aStr = z85.z85_encode(lzStr)
-			assert(z85.z85_decode(aStr) == lzStr)
-
-			chunk = aStr
-			cok = true
-		end
-	else
-		local p = 0x01000193
-		local h = 0x811C9DC5
-		for i = 1, #chunk do
-			h = ((chunk:byte(i) ~ h) * p) & 0xFFFFFFFF
-		end
-		chk = h
-	end
-
-	return chunk, chk, cok
+---@param path string
+---@param data string
+local function writeFile(path, data)
+	local f = io.open(path, "w")
+	if not f then error("failed to open file for writing: " .. path) end
+	local d = f:write(data)
+	f:close()
 end
 
 ---@param out? file*
 ---@param templ string
 ---@param repFn? table|function
----@return string?
 local function template(out, templ, repFn)
 	repFn = repFn or {}
 	local function repl(k)
@@ -142,8 +95,9 @@ local function template(out, templ, repFn)
 	if out then
 		for line in templ:gmatch("[^\r\n]+") do
 			local t = string.gsub(line, "{{(.-)}}", repl)
-			out:write(t, '\n')
+			assert(out:write(t, '\n'))
 		end
+		return nil
 	else
 		local tbl = {}
 		for line in templ:gmatch("[^\r\n]+") do
@@ -154,26 +108,11 @@ local function template(out, templ, repFn)
 	end
 end
 
-local PackagePath = {}
-for path in package.path:gmatch("[^;]+") do
-	PackagePath[#PackagePath + 1] = path
-end
-
-local function file_exists(name)
-	local f = io.open(name, "r")
-	if f ~= nil then
-		io.close(f)
-		return true
-	else
-		return false
-	end
-end
-
 ---@return string|nil
 local function findPackage(modName)
-	for _, path in pairs(PackagePath) do
+	for path in package.path:gmatch("[^;]+") do
 		local modPath = path:gsub("%.", ","):gsub("%?", modName):gsub("%.", "/"):gsub(",", ".")
-		if file_exists(modPath) then
+		if fileExists(modPath) then
 			return modPath
 		end
 	end
@@ -239,26 +178,34 @@ local function rawload(x, y, z)
 	return assert(load(y, "=" .. x, "t", _ENV))
 end]]
 
-local packages = {}
+local Embedded = {}
 
 ---@param out file*
 ---@param name string
 ---@param content string
----@param cache boolean
----@param noCompress boolean
-local function embedChunk(out, name, content, cache, noCompress)
-	if packages[name] then
+---@param isCached boolean
+---@param isCompressed boolean
+---@param checksum integer
+local function embedChunk(out, name, content, isCached, isCompressed, checksum)
+	if Embedded[name] then
 		print("package already embedded: " .. name)
 		return
 	end
-	print("\x1b[0membedding package:\x1b[33m " .. name)
-	packages[name] = true
+	print("\x1b[32m\tembedding...\x1b[0m")
+	Embedded[name] = true
 
-	local data, check, comp = processChunk(content, noCompress)
+	if checksum == 0 then
+		local p = 0x01000193
+		local h = 0x811C9DC5
+		for i = 1, #content do
+			h = ((content:byte(i) ~ h) * p) & 0xFFFFFFFF
+		end
+		checksum = h
+	end
+
 	local open, close
-
-	local eq1 = data:match("%[=*%[")
-	local eq2 = data:match("%]=*%]")
+	local eq1 = content:match("%[=*%[")
+	local eq2 = content:match("%]=*%]")
 	local eq = ''
 	if eq1 or eq2 then
 		local n = math.max(eq1 and #eq1 or 0, eq2 and #eq2 or 0) - 2
@@ -268,45 +215,108 @@ local function embedChunk(out, name, content, cache, noCompress)
 	close = ']' .. eq .. ']'
 
 
-	template(out, Templates.Package, {
+	return template(out, Templates.Package, {
 		name = name,
-		checksum = string.format("0x%08X", check),
-		loader = comp and "lz4load" or "rawload",
-		data = data,
+		checksum = string.format("0x%08X", checksum),
+		loader = isCompressed and "lz4load" or "rawload",
+		data = content,
 		open = open,
 		close = close,
-		save = cache and "true" or "false"
+		save = isCached and "true" or "false"
 	})
-
-	if os.sleep then os.sleep(0) end
-end
-
----@param out file*
----@param name string
----@param stream file*
----@param cache boolean
----@param noCompress boolean
-local function embedStream(out, name, stream, cache, noCompress)
-	local content = stream:read("a")
-	embedChunk(out, name, content, cache, noCompress)
 end
 
 ---@param out file*
 ---@param name string
 ---@param path string
----@param noCompress boolean
-local function embedFile(out, name, path, cache, noCompress)
-	local f = io.open(path)
-	if not f then
-		error("failed to open file: " .. path)
-	end
-	embedStream(out, name, f, cache, noCompress)
-	f:close()
+---@param isCached boolean
+---@param isCompressed boolean
+---@param checksum integer
+local function embedFile(out, name, path, isCached, isCompressed, checksum)
+	local content = readFile(path)
+	return embedChunk(out, name, content, isCached, isCompressed, checksum)
 end
 
-local inFile = assert(io.open(config.input, "r"), "failed to open input file")
-local outFile = assert(io.open(config.output, "w"), "failed to open output file")
+---@return boolean ok
+local function minify(src, dst)
+	local cmd = string.format("luamin --o='%s' '%s'", dst, src)
+	local p = io.popen(cmd, "r")
+	if not p then error("failed to open luamin") end
+	print("\x1b[32m\tminifying...\x1b[0m")
+	local res = p:read("a")
+	if res ~= "OK" then return false end
+	p:close()
+	return true
+end
 
+---@param src string
+---@param validate boolean
+---@return boolean ok
+---@return integer checksum
+local function compress(src, dst, validate)
+	local chk, cok = 0, false
+
+	local lz4 = require("libpack.lz4")
+	local z85 = require("libpack.z85")
+
+	local chunk = readFile(src)
+
+	print("\x1b[32m\tcompressing...\x1b[0m")
+	local lzStr
+	lzStr, chk = lz4.lz4_encode(chunk)
+	if lzStr then
+		if validate then assert(lz4.lz4_decode(lzStr) == chunk, "lz4 decode error") end
+		local aStr = z85.z85_encode(lzStr)
+		if validate then assert(z85.z85_decode(aStr) == lzStr, "lz85 decode error") end
+		cok = true
+		writeFile(dst, aStr)
+	end
+
+	if cok then
+		return true, chk
+	else
+		return false, chk
+	end
+end
+
+---@param out file*
+---@param name string
+---@param path string
+---@param cached boolean
+---@param doMinify boolean
+---@param doCompress boolean
+local function processEmbed(out, name, path, cached, doMinify, doCompress)
+	print("\x1b[0mpackage: \x1b[33m" .. name .. "\x1b[0m")
+	local tmp = {}
+	local minOK, lz4OK, check = true, true, 0
+	if doMinify and config.options.minify then
+		if os.sleep then os.sleep(0) end
+
+		local x = '/tmp/~luapack.min'
+		tmp[#tmp + 1] = x
+		minOK = minify(path, x)
+		path = x
+	end
+	if doCompress and config.options.compress then
+		if os.sleep then os.sleep(0) end
+
+		local x = '/tmp/~luapack.lz4'
+		tmp[#tmp + 1] = x
+		lz4OK, check = compress(path, x, false)
+		path = x
+	end
+	if (minOK and lz4OK) then
+		if os.sleep then os.sleep(0) end
+		
+		local rv, msg = embedFile(out, name, path, cached, lz4OK, check)
+		local fs = require('filesystem')
+		for i = 1, #tmp do fs.remove(tmp[i]) end
+		return rv, msg
+	end
+	return nil, "failed to compress or minify"
+end
+
+local outFile = assert(io.open(config.output, "w"), "failed to open output file")
 template(outFile, Templates.Head, nil)
 template(outFile, Templates.RawLoad, nil)
 if config.options.compress then
@@ -317,15 +327,14 @@ if config.options.compress then
 	assert(z85Path, "failed to find z85 package")
 
 	template(outFile, Templates.LZ4Load, nil)
-	embedFile(outFile, "libpack.lz4.decode", lz4Path, true, true)
-	embedFile(outFile, "libpack.z85.decode", z85Path, true, true)
+	processEmbed(outFile, "libpack.lz4.decode", lz4Path, true, true, false)
+	processEmbed(outFile, "libpack.z85.decode", z85Path, true, true, false)
 end
 
-
-embedStream(outFile, "=main", inFile, false, false)
-
+processEmbed(outFile, "=main", config.input, false, true, true)
 for mod, path in pairs(config.bundle) do
-	embedFile(outFile, mod, path, true, false)
+	processEmbed(outFile, mod, path, true, true, true)
 end
 
 template(outFile, Templates.Tail, nil)
+print("OK")

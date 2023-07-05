@@ -7,10 +7,6 @@ local Token = require("libpack.tokenizer.token")
 
 local Args, Opts = shell.parse(...)
 
-local function print(...)
-    io.stderr:write(table.concat({ ... }, '\t'))
-end
-
 if Opts.h or Opts.help then
     local script = os.getenv("_")
     local name = fs.name(script)
@@ -121,6 +117,8 @@ if Script and Opts.o then
     if not of then error("error opening file for writing: " .. oFile) end
     of:write(m)
     of:close()
+    io.stdout:write("OK")
 else
+    io.stderr:write("OK")
     io.stdout:write(m)
 end
