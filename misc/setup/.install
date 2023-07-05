@@ -1,0 +1,13 @@
+local fs = require("filesystem")
+--
+if not _ENV.install.root or #_ENV.install.root == 0 then
+	_ENV.install.root = "usr"
+end
+--
+local srcPath = _ENV.install.from:gsub("//", "/")
+local dstPath = _ENV.install.to:gsub("//", "/") .. _ENV.install.root:gsub("//","/")
+--
+local setupScript = fs.concat(srcPath, "setup.lua")
+local packageFile = fs.concat(srcPath, "setup.cfg")
+--
+loadfile(setupScript, "bt")(srcPath, dstPath, packageFile, _ENV.install)
