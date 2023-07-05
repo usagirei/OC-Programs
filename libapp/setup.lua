@@ -1,1 +1,1 @@
-X:/Workdir/OC-LibApp/misc/setup/setup.lua
+../misc/setup/setup.lua
