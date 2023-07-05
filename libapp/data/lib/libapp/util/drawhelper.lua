@@ -149,7 +149,7 @@ function lib.alignRect(rect, cW, cH, xA, yA)
 end
 
 ---@param rect Rect
----@param border BorderStyle
+---@param border? BorderStyle
 ---@param sz integer
 ---@param xA Alignment
 ---@param yA Alignment
