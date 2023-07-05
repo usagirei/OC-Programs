@@ -334,12 +334,14 @@ P["libapp.enum.direction2"] = {
 local R = require
 require = function(m, ...)
 	if P[m] then
-		if not P[m].l then
-			local r = P[m].f(m, P[m].m, P[m].c)(...)
-			if not P[m].s then return r end
-			P[m].l = r
+		if P[m].b then return P[m].b
+		elseif P[m].a then return P[m].a(...)
+		else
+			local a, b
+			a = P[m].f(m, P[m].m, P[m].c); b = a(...); P[m].m = nil; P[m].c = nil
+			if P[m].s then P[m].b = b else P[m].a = a end
+			return b
 		end
-		return P[m].l
 	end
 	return R(m, ...)
 end
