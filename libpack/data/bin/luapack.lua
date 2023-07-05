@@ -307,8 +307,8 @@ local function processEmbed(out, name, path, cached, doMinify, doCompress)
 	end
 	if (minOK and lz4OK) then
 		if os.sleep then os.sleep(0) end
-		
-		local rv, msg = embedFile(out, name, path, cached, lz4OK, check)
+
+		local rv, msg = embedFile(out, name, path, cached, lz4OK and doCompress, check)
 		local fs = require('filesystem')
 		for i = 1, #tmp do fs.remove(tmp[i]) end
 		return rv, msg
