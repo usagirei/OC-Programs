@@ -1,3 +1,5 @@
+local fs = require('filesystem')
+
 local function readConfig()
 	local cfg = io.open("./.luapack", "r")
 	if not cfg then
@@ -309,7 +311,6 @@ local function processEmbed(out, name, path, cached, doMinify, doCompress)
 		if os.sleep then os.sleep(0) end
 
 		local rv, msg = embedFile(out, name, path, cached, lz4OK and doCompress, check)
-		local fs = require('filesystem')
 		for i = 1, #tmp do fs.remove(tmp[i]) end
 		return rv, msg
 	end
@@ -331,8 +332,17 @@ if config.options.compress then
 	processEmbed(outFile, "libpack.z85.decode", z85Path, true, true, false)
 end
 
-processEmbed(outFile, "=main", config.input, false, true, true)
+local bundles = {}
 for mod, path in pairs(config.bundle) do
+	bundles[#bundles+1] = {mod,path}
+end
+table.sort(bundles, function(a,b)
+	return fs.size(a[2]) > fs.size(b[2])
+end)
+
+processEmbed(outFile, "=main", config.input, false, true, true)
+for i, v in ipairs(bundles) do
+	local mod, path = v[1], v[2]
 	processEmbed(outFile, mod, path, true, true, true)
 end
 
