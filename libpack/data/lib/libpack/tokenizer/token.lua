@@ -21,9 +21,8 @@ end
 ---@param token? Token
 ---@param type TokenType|integer
 function Cls.withType(token, type)
-    if token then
-        token:setType(type)
-    end
+    if not token then return nil end
+    token:setType(type)
     return token
 end
 
@@ -57,8 +56,6 @@ end
 
 ---@param type TokenType
 function Cls:setType(type)
-    assert(not self:frozen(), "token is frozen")
-
     self.m_Typ = type
 end
 

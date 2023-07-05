@@ -50,7 +50,6 @@ function util.chunk(parser)
 
     local rv = AST.Chunk.new()
     rv:setInnerScope(scope)
-    parser:setSourceInfo(rv, start)
 
     --assert(parser:reader():eof())
     return rv
@@ -251,7 +250,7 @@ function util.expr_const(parser)
         or parser:string(true)
     if constVal then
         local rv = AST.ValueConstExpr.new():setValue(parser:lastMatch())
-        return parser:setSourceInfo(rv, constVal)
+        return rv
     end
 
     return nil
@@ -287,18 +286,15 @@ end
 function util.expr_name_index_call(parser)
     local value
     if parser:symbol(SYM.OpenPar, true) then
-        local openPar = parser:lastMatch()
         local expr = util.expr(parser)
         assert(expr, "Expected Expression")
         parser:symbol(SYM.ClosePar)
         local rv = AST.ValueParExpr.new():setValue(expr)
-        parser:setSourceInfo(rv, openPar)
         value = rv
     else
         if parser:identifier(nil, true) then
             local name = parser:lastMatch()
             local rv = AST.ValueVarExpr.new():setName(name):setDecl(false)
-            parser:setSourceInfo(rv, name)
             value = rv
         else
             return nil
@@ -308,39 +304,29 @@ function util.expr_name_index_call(parser)
     while true do
         if parser:symbol(SYM.OpenBracket, true) then
             -- Index
-            local open = parser:lastMatch()
             local index = util.expr(parser)
             assert(index, "Expected Expression")
             parser:symbol(SYM.CloseBracket)
             value = AST.IndexAccessExpr.new():setIndex(index):setIndexee(value)
-            parser:setSourceInfo(value, open)
         elseif parser:symbol(SYM.Dot, true) then
             -- Field Access
-            local dot = parser:lastMatch()
             local name = parser:identifier(nil)
             value = AST.FieldAccessExpr.new():setIndex(name):setIndexee(value)
-            parser:setSourceInfo(value, dot)
         elseif parser:symbol(SYM.Colon, true) then
             -- Self Call
-            local col = parser:lastMatch()
             local index = parser:identifier(nil)
             value = AST.SelfAccessExpr.new():setIndex(index):setIndexee(value)
-            parser:setSourceInfo(value, col)
 
-            local cBeg = parser:reader():token()
             local args = util.call_args(parser)
             assert(args, "expected function arguments")
             value = AST.CallExpr.new():setCallee(value):setArgs(args)
-            parser:setSourceInfo(value, cBeg)
         else
             -- Regular Call?
-            local cBeg = parser:reader():token()
             local args = util.call_args(parser)
             if not args then
                 break
             end
             value = AST.CallExpr.new():setCallee(value):setArgs(args)
-            parser:setSourceInfo(value, cBeg)
         end
     end
 
@@ -353,7 +339,6 @@ function util.expr_table(parser)
     ---@return TableField?
     local function field()
         if parser:symbol(SYM.OpenBracket, true) then
-            local open = parser:lastMatch()
             local key = util.expr(parser)
             assert(key, "expected key")
             parser:symbol(SYM.CloseBracket)
@@ -363,7 +348,6 @@ function util.expr_table(parser)
             assert(value, "expected value")
 
             local rv = AST.ValueTableExpr.Field.new(key, value)
-            parser:setSourceInfo(rv, open)
             return rv
         else
             local value = util.expr(parser)
@@ -378,10 +362,9 @@ function util.expr_table(parser)
 
                 local rv = AST.ValueTableExpr.Field.new(key, value)
 
-                return parser:setSourceInfo(rv, key)
+                return rv
             else
                 local rv = AST.ValueTableExpr.Field.new(nil, value)
-                rv:setSourceInfo(value:getSourceInfo())
                 return rv
             end
         end
@@ -404,7 +387,6 @@ function util.expr_table(parser)
         local fields = fieldList()
         parser:symbol(SYM.CloseCurly)
         local rv = AST.ValueTableExpr.new():setFields(fields)
-        parser:setSourceInfo(rv, openTbl)
         return rv
     end
     return nil
@@ -416,7 +398,6 @@ function util.expr_varags(parser)
     local sym = parser:symbol(SYM.VarArg, true)
     if sym then
         local rv = AST.ValueVarArgsExpr.new():setToken(sym)
-        parser:setSourceInfo(rv, sym)
         return rv
     end
     return nil
@@ -425,11 +406,10 @@ end
 ---@param parser LuaParser
 ---@return ValueExpr?
 function util.expr_func(parser)
-    local fnKwd = parser:keyword(KWD.Function, true)
-    if fnKwd then
+    if parser:keyword(KWD.Function, true) then
         local scope = util.parseFunc(parser)
         local rv = AST.ValueFuncExpr.new():setInnerScope(scope)
-        return parser:setSourceInfo(rv, fnKwd)
+        return rv
     end
     return nil
 end
@@ -441,13 +421,11 @@ end
 ---@return LocalStat|FuncStat
 function util.stat_local(parser)
     if parser:keyword(KWD.Function, true) then
-        local fnKeyword = parser:lastMatch()
         local token = parser:identifier()
         local name = AST.ValueVarExpr.new():setName(token):setDecl(true)
         local scope = util.parseFunc(parser)
         local fun = AST.FuncStat.new():setName(name):setInnerScope(scope)
         local loc = AST.LocalStat.new():setStat(fun)
-        parser:setSourceInfo(fun, fnKeyword)
         return loc
     else
         local names = util.nameList(parser, true, false)
@@ -461,7 +439,7 @@ function util.stat_local(parser)
             end
             local ass = AST.AssignStat.new():setLValues(names):setRValues(values)
             local loc = AST.LocalStat.new():setStat(ass)
-            return parser:setSourceInfo(loc, names[1]:name())
+            return loc
         end
     end
     error("expected function or variables")
@@ -478,29 +456,23 @@ function util.stat_func(parser)
     do
         local token = parser:identifier(nil)
         var = AST.ValueVarExpr.new():setName(token):setDecl(true)
-        parser:setSourceInfo(var, token)
     end
     name = var
     
     while parser:symbol(SYM.Dot, true) do
         var:setDecl(false)
-        local dot = parser:lastMatch()
         local index = parser:identifier(nil)
         name = AST.FieldAccessExpr.new():setIndex(index):setIndexee(name)
-        parser:setSourceInfo(name, dot)
     end
 
     if parser:symbol(SYM.Colon, true) then
         var:setDecl(false)
-        local colon = parser:lastMatch()
         local index = parser:identifier(nil)
         name = AST.SelfAccessExpr.new():setIndex(index):setIndexee(name)
-        parser:setSourceInfo(name, colon)
     end
 
     local scope = util.parseFunc(parser)
     rv:setInnerScope(scope):setName(name)
-    parser:setSourceInfo(name, funcKw)
 
     return rv
 end
@@ -534,7 +506,7 @@ function util.stat_for(parser)
 
     stat:setInnerScope(scope --[[@as ForScope]])
 
-    return parser:setSourceInfo(stat, forKwd)
+    return stat
 end
 
 ---@param parser LuaParser
@@ -542,7 +514,6 @@ end
 function util.stat_repeat(parser)
     local stat = AST.RepeatStat.new()
 
-    local rptKwd = parser:lastMatch()
     local sId = parser:scopeBegin(false, true)
     local stats = util.statList(parser)
     parser:keyword(KWD.Until)
@@ -550,7 +521,7 @@ function util.stat_repeat(parser)
     local scope = parser:scopeEnd(sId, stats, util.condScope, cond) --[[@as CondScope]]
     stat:setInnerScope(scope)
 
-    return parser:setSourceInfo(stat, rptKwd)
+    return stat
 end
 
 ---@param parser LuaParser
@@ -558,7 +529,6 @@ end
 function util.stat_while(parser)
     local stat = AST.WhileStat.new()
 
-    local rptKwd = parser:lastMatch()
     local sId = parser:scopeBegin(false, true)
     local cond = util.expr(parser)
     parser:keyword(KWD.Do)
@@ -567,14 +537,12 @@ function util.stat_while(parser)
     stat:setInnerScope(scope)
     parser:keyword(KWD.End)
 
-    return parser:setSourceInfo(stat, rptKwd)
+    return stat
 end
 
 ---@param parser LuaParser
 ---@return IfStat
 function util.stat_if(parser)
-    local ifKwd = parser:lastMatch()
-
     local stat = AST.IfStat.new()
     do
         local sId = parser:scopeBegin(false, false)
@@ -608,13 +576,12 @@ function util.stat_if(parser)
     end
     parser:keyword(KWD.End)
 
-    return parser:setSourceInfo(stat, ifKwd)
+    return stat
 end
 
 ---@param parser LuaParser
 ---@return DoStat?
 function util.stat_do(parser)
-    local doKwd = parser:lastMatch()
     local sId = parser:scopeBegin(false, false)
     local stats = util.statList(parser)
     parser:keyword(KWD.End)
@@ -622,63 +589,57 @@ function util.stat_do(parser)
     local rv = AST.DoStat.new()
     rv:setInnerScope(scope)
 
-    return parser:setSourceInfo(rv, doKwd)
+    return rv
 end
 
 ---@param parser LuaParser
 ---@return LabelStat?
 function util.stat_label(parser)
-    local labelTok = parser:lastMatch()
-
     local lbl = parser:identifier(nil)
     parser:symbol(SYM.Label)
     local rv = AST.LabelStat.new():setLabel(lbl)
 
-    return parser:setSourceInfo(rv, labelTok)
+    return rv
 end
 
 ---@param parser LuaParser
 ---@return GotoStat?
 function util.stat_goto(parser)
-    local gotoKwd = parser:lastMatch()
     local lbl = parser:identifier(nil)
     local rv = AST.GotoStat.new():setLabel(lbl)
 
-    return parser:setSourceInfo(rv, gotoKwd)
+    return rv
 end
 
 ---@param parser LuaParser
 ---@return BreakStat?
 function util.stat_break(parser)
-    local breakKwd = parser:lastMatch()
     local canbreak, tgtScope = util.scopeGetBreak(parser)
     assert(canbreak, "not inside a break-able scope")
     local rv = AST.BreakStat.new()
 
-    return parser:setSourceInfo(rv, breakKwd)
+    return rv
 end
 
 ---@param parser LuaParser
 ---@return ReturnStat?
 function util.stat_return(parser)
-    local retKwd = parser:lastMatch()
     local canReturn, tgtScope = util.scopeGetReturn(parser)
     assert(canReturn, "not inside a return-able scope")
     local values = util.exprList(parser)
     local rv = AST.ReturnStat.new():setReturnValues(values)
-    return parser:setSourceInfo(rv, retKwd)
+    return rv
 end
 
 ---@param parser LuaParser
 ---@return CallStat|AssignStat?
 function util.stat_call_assign(parser)
-    local start = parser:lastMatch()
     local var = util.expr_name_index_call(parser)
     if not var then return nil end
     if Class.IsInstance(var, AST.CallExpr) then
         local expr = var --[[@as CallExpr]]
         local rv = AST.CallStat.new():setCallExpr(expr)
-        return parser:setSourceInfo(rv, start)
+        return rv
     else
         local vars = {}
         while true do
@@ -693,7 +654,7 @@ function util.stat_call_assign(parser)
 
         local rv = AST.AssignStat.new():setLValues(vars):setRValues(vals)
 
-        return parser:setSourceInfo(rv, eq)
+        return rv
     end
 end
 

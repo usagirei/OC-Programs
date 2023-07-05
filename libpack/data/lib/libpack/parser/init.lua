@@ -67,7 +67,6 @@ function Cls:init()
             assert(not v2)
             rv = AST.UnaryExpr.new():setOperator(op):setOperand(v1)
         end
-        self:setSourceInfo(rv, op)
         return rv
     end
     self.m_Solver = Solver.new(combine)
@@ -163,8 +162,6 @@ function Cls:scopeEnd(id, statements, scopeBuilder, ...)
         sBlk = AST.Scope.new(sData:isClosure()):setStatements(statements)
     end
     self.m_ScopeData[id] = nil
-    self:setSourceInfo(sBlk, sData:start())
-
     return sBlk
 end
 
@@ -262,20 +259,6 @@ end
 function Cls:identifier(name, optional)
     local ok, rv = self:match(name, TOK.Identifier, optional)
     if ok then return rv end
-end
-
----@generic T : Node
----@param node T
----@param tkBegin Token
----@param tkEnd? Token
----@return T
-function Cls:setSourceInfo(node, tkBegin, tkEnd)
-    tkEnd = tkEnd or self:lastMatch()
-    local a, b, c, _, _, _ = self.m_Tokenizer:getLineInfo(tkBegin)
-    local _, _, _, d, e, f = self.m_Tokenizer:getLineInfo(tkEnd)
-    ---@cast node Node
-    node:setSourceInfo(a, b, c, d, e, f)
-    return node
 end
 
 return Cls

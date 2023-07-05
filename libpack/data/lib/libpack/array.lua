@@ -30,7 +30,7 @@ end
 function lib.bfind(arr, key, compare, i, j)
     i = i or 1
     j = j or #arr
-    assert(i <= j)
+    if(i > j) then return nil, nil end
 
     local m = (i + j) // 2
     local node = arr[m]

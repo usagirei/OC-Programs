@@ -1,20 +1,18 @@
 local class = require("libpack.class")
-local Super = require("libpack.stringview")
+local StringView = require("libpack.stringview")
 local TokenType = require("libpack.tokenizer.type")
 local Token = require("libpack.tokenizer.token")
 local ARR = require("libpack.array")
 
 -------------------
 
----@class TokenReader : StringView
-local Cls = class.NewClass(Super)
-Cls.prototype.__tostring = Cls.value
-Cls.prototype.__len = Cls.len
+---@class TokenReader
+local Cls = class.NewClass(nil, "TokenReader")
 
-Cls.LF = Super.new('\n')
-Cls.CR = Super.new('\r')
-Cls.NUL = Super.new('\0')
-Cls.BS = Super.new('\\')
+Cls.LF = StringView.new('\n')
+Cls.CR = StringView.new('\r')
+Cls.NUL = StringView.new('\0')
+Cls.BS = StringView.new('\\')
 -- "^$()%.[]*+-?" but escaped
 Cls.PatternEscape = "[%^%$%(%)%%%.%[%]%*%+%-%?]"
 
@@ -38,7 +36,7 @@ end
 
 ---@param str string
 function Cls:init(str)
-    Super.init(self, str, 1, #str)
+    self:setData(str, 1, #str)
     self:createToken(1, 0, false, TokenType.Uknown)
     self:seek(0, "set")
 
@@ -52,20 +50,24 @@ end
 function Cls:setupLocationInfo()
     local prev = 1
     local lines = {}
-    while prev < #self do
+    while prev < #self.m_View do
         local i, j = self:data():find("^.-\n", prev, false)
         if not i then break end
         lines[#lines + 1] = { i, j }
         prev = j + 1
     end
-    if prev ~= #self then
+    if prev ~= #self.m_View then
         lines[#lines + 1] = { prev, #self }
     end
     self.m_LineInfo = lines
 end
 
+function Cls:data()
+    return self.m_View:data()
+end
+
 function Cls:setData(str, i, j)
-    Super.setData(self, str, i, j)
+    self.m_View = StringView.new(str, i, j)
     self:createToken(1, 0, false, TokenType.Uknown)
     self:seek(0, "set")
     self:setupLocationInfo()
@@ -166,7 +168,7 @@ end
 --- End of File
 ---@return boolean
 function Cls:eof()
-    return self.m_Pos > self:tail()
+    return self.m_Pos > #self.m_View
 end
 
 --- Set Token Absolute
@@ -185,10 +187,8 @@ function Cls:createToken(i, j, dryRun, type)
 end
 
 ---@param tk Token
----@return integer startPos
 ---@return integer startLine
 ---@return integer startCol
----@return integer endPos
 ---@return integer endLine
 ---@return integer endCol
 function Cls:getLineInfo(tk)
@@ -207,7 +207,7 @@ function Cls:getLineInfo(tk)
     local hL, hP, tL, tP, _
 
     hL = ARR.bfind(tbl, headPos, rangeTest)
-    if not hL then return 0, 0, 0, 0, 0, 0 end
+    if not hL then return 0, 0, 0, 0 end
     hP, _ = table.unpack(tbl[hL])
 
     tL = ARR.bfind(tbl, tailPos, rangeTest, hL)
@@ -217,10 +217,8 @@ function Cls:getLineInfo(tk)
         tP = hP
     end
 
-    local hR, tR = self:iar(headPos, tailPos)
-
     ---@diagnostic disable-next-line: return-type-mismatch
-    return hR, hL, (headPos - hP + 1), tR, tL, (tailPos - tP + 1)
+    return hL, (headPos - hP + 1), tL, (tailPos - tP + 1)
 end
 
 --- Set Position
@@ -234,11 +232,11 @@ function Cls:seek(offset, mode)
     elseif mode == "cur" then
         newPos = self.m_Pos + offset
     elseif mode == "end" then
-        newPos = self:tail() + offset
+        newPos = self.m_View:tail() + offset
     else
         error("invalid seek mode", 3)
     end
-    self.m_Pos = math.max(math.min(self:tail() + 1, newPos), self:head())
+    self.m_Pos = math.max(math.min(self.m_View:tail() + 1, newPos), self.m_View:head())
 end
 
 --- Cur Position
@@ -426,6 +424,7 @@ function Cls:number()
 end
 
 --- Identifier
+---@return Token?
 function Cls:identifier()
     local tk = self:dryMatch("[%a_][%w_]*")
     if tk and not self.m_Keywords[tk:value()] then
@@ -437,6 +436,7 @@ function Cls:identifier()
 end
 
 --- Keyword
+---@return Token?
 function Cls:keyword()
     local tk = self:dryMatch("[%a_][%w_]*")
     if tk and self.m_Keywords[tk:value()] then
@@ -448,7 +448,7 @@ function Cls:keyword()
 end
 
 --- Symbol
----@return Token
+---@return Token?
 function Cls:symbol()
     for _, symb in pairs(self.m_Symbols) do
         if self:match(symb) then
@@ -489,7 +489,6 @@ function Cls:next()
         return nil
     end
 
-    rv:freeze()
     return rv
 end
 
@@ -538,7 +537,6 @@ Cls.whitespace = typed(Cls.whitespace, TokenType.Whitespace)
 Cls.comment = typed(Cls.comment, TokenType.Comment)
 Cls.symbol = typed(Cls.symbol, TokenType.Symbol)
 Cls.tokenize = checked(Cls.tokenize)
-Cls.prototype.__call = Cls.next
 
 ---
 
