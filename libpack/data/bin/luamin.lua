@@ -1,5 +1,24 @@
-local fs = require('filesystem')
-local shell = require('shell')
+local fsOk, fs = pcall(require, 'filesystem')
+if not fsOk then
+    --io.stderr:write("Standalone - Importing LFS")
+    local lfs = require('lfs')
+    fs = {}
+    function fs.size(path)
+        return lfs.attributes(path).size
+    end
+
+    function fs.remove(path)
+        os.remove(path)
+    end
+end
+
+local shellOk, shell = pcall(require, 'shell')
+if not shellOk then
+    shell = {}
+    function shell.parse(...)
+        return {...}, {}
+    end
+end
 
 local Parser = require("libpack.parser")
 local Analyzer = require("libpack.analyzer")
@@ -11,11 +30,10 @@ if Opts.h or Opts.help then
     local script = os.getenv("_")
     local name = fs.name(script)
 
-    local msg = [[Usage: %s [<script>] [--o=<output>|-o]
+    local msg = [[Usage: %s [<script>] [<output>]
     Minifies the target lua script, if no input is passed, chunk data is read from stdin
-    Outputs to stdout unless -o is passed
+    Outputs to stdout unless the second argument is passed
         --help|-h\tprints this message
-        --o|-o\toutput file, defaults to '<input>.min.lua' if no value is passed
 ]]
     msg = msg:format(name)
     print(msg)
@@ -83,16 +101,12 @@ local function renameLocals(an, chunk)
     return map
 end
 
-local Script, ScriptName, ScriptPath
-
 local chunkData
 if Args[1] then
-    Script = shell.resolve(Args[1])
-    ScriptName = fs.name(Script):gsub("%.lua$", "")
-    ScriptPath = fs.path(Script)
-    local f = io.open(Script)
-    if not f then error("error opening file for reading: " .. Script) end
+    local f = io.open(Args[1])
+    if not f then error("error opening file for reading: " .. Args[1]) end
     chunkData = f:read("a")
+    f:close()
 else
     chunkData = io.stdin:read("a")
 end
@@ -104,21 +118,13 @@ local a = Analyzer.new()
 renameLocals(a, c)
 local m = a:dump(c, false, nil)
 
-local of
-if Script and Opts.o then
-    local fName
-    if type(Opts.o) ~= "string" then
-        fs.concat(ScriptPath, ScriptName .. ".min.lua")
-    else
-        fName = Opts.o
-    end
-    local oFile = shell.resolve(fName)
-    of = io.open(oFile, "w")
-    if not of then error("error opening file for writing: " .. oFile) end
-    of:write(m)
-    of:close()
+if Args[2] then
+    local f = io.open(Args[2], "w")
+    if not f then error("error opening file for writing: " .. Args[2]) end
+    f:write(m)
+    f:close()
     io.stdout:write("OK")
 else
-    io.stderr:write("OK")
     io.stdout:write(m)
+    io.stderr:write("OK")
 end

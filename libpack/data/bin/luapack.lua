@@ -1,4 +1,13 @@
-local fs = require('filesystem')
+local fsOk, fs = pcall(require, 'filesystem')
+if not fsOk then
+	--io.stderr:write("Standalone - Importing LFS")
+	local lfs = require('lfs')
+	fs = {}
+	function fs.size(path)
+		assert(io.open(path, 'r')):close()
+		return lfs.attributes(path, 'size')
+	end
+end
 
 local function readConfig()
 	local cfg = io.open("./.luapack", "r")
@@ -243,7 +252,7 @@ end
 
 ---@return boolean ok
 local function minify(src, dst)
-	local cmd = string.format("luamin --o='%s' '%s'", dst, src)
+	local cmd = string.format("luamin '%s' '%s'", src, dst)
 	local p = io.popen(cmd, "r")
 	if not p then error("failed to open luamin") end
 	print("\x1b[32m\tminifying...\x1b[0m")
@@ -292,11 +301,12 @@ end
 local function processEmbed(out, name, path, cached, doMinify, doCompress)
 	print("\x1b[0mpackage: \x1b[33m" .. name .. "\x1b[0m")
 	local tmp = {}
+	local rnd = math.random(0, 0xFFFFFFFF)
 	local minOK, lz4OK, check = true, true, 0
 	if doMinify and config.options.minify then
 		if os.sleep then os.sleep(0) end
 
-		local x = '/tmp/~luapack.min'
+		local x = os.tmpname()
 		tmp[#tmp + 1] = x
 		minOK = minify(path, x)
 		path = x
@@ -304,22 +314,35 @@ local function processEmbed(out, name, path, cached, doMinify, doCompress)
 	if doCompress and config.options.compress then
 		if os.sleep then os.sleep(0) end
 
-		local x = '/tmp/~luapack.lz4'
+		local x = os.tmpname()
 		tmp[#tmp + 1] = x
 		lz4OK, check = compress(path, x, false)
 		path = x
 	end
+	local rv, msg
 	if (minOK and lz4OK) then
 		if os.sleep then os.sleep(0) end
 
-		local rv, msg = embedFile(out, name, path, cached, lz4OK and doCompress, check)
-		for i = 1, #tmp do fs.remove(tmp[i]) end
-		return rv, msg
+		rv, msg = embedFile(out, name, path, cached, lz4OK and doCompress, check)
+	else
+		rv, msg = nil, "failed to compress or minify"
 	end
-	return nil, "failed to compress or minify"
+	for i = 1, #tmp do os.remove(tmp[i]) end
+	return rv, msg
 end
 
-local outFile = assert(io.open(config.output, "w"), "failed to open output file")
+local outFile
+if config.output then
+	outFile = assert(io.open(config.output, "w"), "failed to open output file")
+else
+	outFile = io.stdout
+	print = function(...)
+		local str = table.concat({...}, '\t')
+		io.stderr:write(str, '\n')
+	end
+	print("Outputting to stdout")
+end
+
 template(outFile, Templates.Head, nil)
 template(outFile, Templates.RawLoad, nil)
 if config.options.compress then
@@ -336,9 +359,9 @@ end
 
 local bundles = {}
 for mod, path in pairs(config.bundle) do
-	bundles[#bundles+1] = {mod,path}
+	bundles[#bundles + 1] = { mod, path }
 end
-table.sort(bundles, function(a,b)
+table.sort(bundles, function(a, b)
 	return fs.size(a[2]) > fs.size(b[2])
 end)
 
