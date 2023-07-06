@@ -26,7 +26,7 @@ local Token = require("libpack.tokenizer.token")
 
 local Args, Opts = shell.parse(...)
 
-if Opts.h or Opts.help then
+if Opts.h or Opts.help or #Args == 0 then
     local script = os.getenv("_")
     local name = fs.name(script)
 
