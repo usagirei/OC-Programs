@@ -256,7 +256,7 @@ local function minify(src, dst)
 	local p = io.popen(cmd, "r")
 	if not p then error("failed to open luamin") end
 	print("\x1b[32m\tminifying...\x1b[0m")
-	local res = p:read("a")
+	local res = p:read("l")
 	if res ~= "OK" then return false end
 	p:close()
 	return true

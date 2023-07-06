@@ -1,12 +1,30 @@
 local fsOk, fs = pcall(require, 'filesystem')
 if not fsOk then
+    local lfs = require("lfs")
     fs = {}
     function fs.name(path)
-        return path:match("^.*[/\\]([^/\\]-)$")
+        local dir, name = path:match("^(.-)([^\\/]*)$")
+        return name
     end
 
-    function fs.remove(path)
-        os.remove(path)
+    function fs.path(path)
+        local dir, name = path:match("^(.-)([^\\/]*)$")
+        return dir:gsub("/$", "")
+    end
+
+    function fs.exists(path)
+        return lfs.attributes(path, "mode") ~= nil
+    end
+
+    function fs.makeDirectory(path)
+        if fs.exists(path) then return true end
+        local dir = fs.path(path)
+        if dir == path then
+            return nil, "cannot create the root directory"
+        end
+        local ok, msg = fs.makeDirectory(dir)
+        if not ok then return nil, msg .. " (" .. path .. ")" end
+        return lfs.mkdir(path)
     end
 end
 
@@ -14,7 +32,7 @@ local shellOk, shell = pcall(require, 'shell')
 if not shellOk then
     shell = {}
     function shell.parse(...)
-        return {...}, {}
+        return { ... }, {}
     end
 end
 
@@ -117,12 +135,13 @@ renameLocals(a, c)
 local m = a:dump(c, false, nil)
 
 if Args[2] then
+    assert(fs.makeDirectory(fs.path(Args[2])))
     local f = io.open(Args[2], "w")
     if not f then error("error opening file for writing: " .. Args[2]) end
     f:write(m)
     f:close()
-    io.stdout:write("OK")
+    io.stdout:write("OK\n")
 else
     io.stdout:write(m)
-    io.stderr:write("OK")
+    io.stderr:write("OK\n")
 end
