@@ -1,10 +1,8 @@
 local fsOk, fs = pcall(require, 'filesystem')
 if not fsOk then
-    --io.stderr:write("Standalone - Importing LFS")
-    local lfs = require('lfs')
     fs = {}
-    function fs.size(path)
-        return lfs.attributes(path).size
+    function fs.name(path)
+        return path:match("^.*[/\\]([^/\\]-)$")
     end
 
     function fs.remove(path)

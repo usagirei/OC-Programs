@@ -23,8 +23,12 @@ function Cls.RangeEscapeTest(esc)
     local escByte = esc:byte()
     ---@param token Token
     return function(token)
-        local tokHead = token:data():byte(token:head() - 1)
-        return tokHead ~= escByte
+        local h1 = token:data():byte(token:head() - 1)
+        -- if c-1 is not the escape character, accept it
+        if h1 ~= escByte then return true end
+        local h2 = token:data():byte(token:head() - 2)
+        -- if c-1 is the escape character, check if c-1 itself is not escaped too
+        return h2 == h1
     end
 end
 
