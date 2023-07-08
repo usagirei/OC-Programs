@@ -96,7 +96,7 @@ for v in lfs.dir('.') do
             local ref    = fread("./dist/." .. v .. ".rev")
 
             if ref then
-                local cmd = "git diff --quiet HEAD " .. ref .. " -- " .. v .. " && echo 'skip' || echo 'build'"
+                local cmd = "git diff --quiet master " .. ref .. " -- " .. v .. " && echo 'skip' || echo 'build'"
                 skip = pread(cmd) == "skip"
             end
 
