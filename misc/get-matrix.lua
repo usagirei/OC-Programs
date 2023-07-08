@@ -74,11 +74,16 @@ local function pread(cmd)
     return s
 end
 
+local function eprint(...)
+    local str = table.concat({ ... }, '\t')
+    io.stderr:write(str, '\n')
+end
+
 local m = {
     include = {}
 }
 local prepareSetup = false
-print("Gathering Targets")
+eprint("Gathering Targets")
 for v in lfs.dir('.') do
     if not v:match("^%.") and lfs.attributes(v, "mode") == "directory" then
         local dist = lfs.attributes('./' .. v .. '/.dist', "mode") == "file"
@@ -97,16 +102,28 @@ for v in lfs.dir('.') do
 
             if not skip then
                 if dist then m.include[#m.include + 1] = { program = v, minified = false, writerev = true, setup = setup } end
-                if minDist then m.include[#m.include + 1] = { program = v, minified = true, writerev = not dist,
-                        setup = setup } end
+                if minDist then
+                    m.include[#m.include + 1] = {
+                        program = v,
+                        minified = true,
+                        writerev = not dist,
+                        setup = setup
+                    }
+                end
             end
-            print(v, skip and 'skip' or 'build', dist and "regular" or '', minDist and "minified" or '')
+            eprint(
+                v,
+                skip and 'skip' or 'build',
+                dist and "regular" or '',
+                minDist and "minified" or '',
+                setup and "setup" or ''
+            )
         end
     end
 end
 
 local doBuild = #m.include > 0
 
-print('::set-output name=matrix::' .. enc_tbl(m))
-print('::set-output name=build::' .. tostring(doBuild))
-print('::set-output name=setup::' .. tostring(doBuild and prepareSetup))
+io.stdout:write('matrix=', enc_tbl(m), '\n')
+io.stdout:write('build=', tostring(doBuild), '\n')
+io.stdout:write('setup=', tostring(doBuild and prepareSetup), '\n')

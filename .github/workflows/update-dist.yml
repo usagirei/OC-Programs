@@ -24,7 +24,7 @@ jobs:
                   scripts: ("get-matrix")
             - id: get-matrix
               run: |
-                  get-matrix
+                  get-matrix >> $GITHUB_OUTPUT
 
     prepare-setup:
         runs-on: ubuntu-latest
@@ -81,9 +81,16 @@ jobs:
             - run: echo Bundling ${{ matrix.program }}
 
             - uses: actions/checkout@v3
+              if: ${{ matrix.minified }}
               with:
                   sparse-checkout: | 
                     .github
+                    libpack
+                    ${{ matrix.program }}
+            - uses: actions/checkout@v3
+              if: ${{ !matrix.minified }}
+              with:
+                  sparse-checkout: | 
                     ${{ matrix.program }}
 
             - uses: ./.github/actions/lua/install
