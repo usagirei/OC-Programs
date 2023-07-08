@@ -92,28 +92,26 @@ for v in lfs.dir('.') do
 
         if minDist or dist then
             prepareSetup = prepareSetup or setup
-            local skip   = false
-            local ref    = fread("./dist/." .. v .. ".rev")
 
-            if ref then
-                local cmd = "git diff --quiet master " .. ref .. " -- " .. v .. " && echo 'skip' || echo 'build'"
-                skip = pread(cmd) == "skip"
+            if dist then
+                m.include[#m.include + 1] = {
+                    program = v,
+                    minified = false,
+                    setup = setup,
+                    writechk = true
+                }
+            end
+            if minDist then
+                m.include[#m.include + 1] = {
+                    program = v,
+                    minified = true,
+                    setup = setup,
+                    writechk = not dist
+                }
             end
 
-            if not skip then
-                if dist then m.include[#m.include + 1] = { program = v, minified = false, writerev = true, setup = setup } end
-                if minDist then
-                    m.include[#m.include + 1] = {
-                        program = v,
-                        minified = true,
-                        writerev = not dist,
-                        setup = setup
-                    }
-                end
-            end
             eprint(
                 v,
-                skip and 'skip' or 'build',
                 dist and "regular" or '',
                 minDist and "minified" or '',
                 setup and "setup" or ''
@@ -122,8 +120,4 @@ for v in lfs.dir('.') do
     end
 end
 
-local doBuild = #m.include > 0
-
 io.stdout:write('matrix=', enc_tbl(m), '\n')
-io.stdout:write('build=', tostring(doBuild), '\n')
-io.stdout:write('setup=', tostring(doBuild and prepareSetup), '\n')
