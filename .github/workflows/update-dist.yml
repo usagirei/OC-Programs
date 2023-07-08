@@ -206,6 +206,7 @@ jobs:
                   path: dist/
 
             - name: Create Pull Request
+              if: always()
               uses: peter-evans/create-pull-request@v5
               with:
                   title: Update Dist Files
