@@ -55,6 +55,7 @@ jobs:
                   get-matrix $checksum >> $GITHUB_OUTPUT
 
             - uses: actions/upload-artifact@v3
+              if: steps.get-matrix.outputs.rebuild == 'true'
               with:
                   name: setup-files
                   path: setup.tar
