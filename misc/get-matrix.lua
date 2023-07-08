@@ -79,45 +79,57 @@ local function eprint(...)
     io.stderr:write(str, '\n')
 end
 
+local Args = { ... }
+
+local setupMd5 = Args[1]
+
 local m = {
     include = {}
 }
 local prepareSetup = false
-eprint("Gathering Targets")
+eprint("setup", "Checksum: ", setupMd5)
 for v in lfs.dir('.') do
     if not v:match("^%.") and lfs.attributes(v, "mode") == "directory" then
         local dist = lfs.attributes('./' .. v .. '/.dist', "mode") == "file"
         local minDist = lfs.attributes('./' .. v .. '/.min', "mode") == "file"
-        local setup = lfs.attributes('./' .. v .. '/setup.cfg', "mode") == "file"
 
         if minDist or dist then
-            prepareSetup = prepareSetup or setup
-
-            if dist then
-                m.include[#m.include + 1] = {
-                    program = v,
-                    minified = false,
-                    setup = setup,
-                    writechk = true
-                }
-            end
-            if minDist then
-                m.include[#m.include + 1] = {
-                    program = v,
-                    minified = true,
-                    setup = setup,
-                    writechk = not dist
-                }
+            local isSetup = lfs.attributes('./' .. v .. '/setup.cfg', "mode") == "file"
+            local newMd5 = pread("bash -c 'find " .. v .. " -type f -exec md5sum {} \\; | md5sum'")
+                :match('^[a-fA-F0-9]+')
+            eprint(v, "Dat Checksum:", newMd5)
+            if isSetup then
+                newMd5 = pread("bash -c 'echo " .. newMd5 .. setupMd5 .. " | md5sum'")
+                    :match('^[a-fA-F0-9]+')
             end
 
-            eprint(
-                v,
-                dist and "regular" or '',
-                minDist and "minified" or '',
-                setup and "setup" or ''
-            )
+            local oldMd5 = fread('dist/.' .. v .. '.sum') or '0'
+            eprint(v, "New Checksum:", newMd5)
+            eprint(v, "Old Checksum:", oldMd5)
+
+            if newMd5 ~= oldMd5 then
+                prepareSetup = prepareSetup or isSetup
+
+                m.include[#m.include + 1] = {
+                    program = v,
+                    minified = minDist,
+                    regular = dist,
+                    setup = isSetup,
+                    checksum = newMd5,
+                }
+
+                eprint(
+                    v,
+                    dist and "regular" or '',
+                    minDist and "minified" or '',
+                    isSetup and "setup" or ''
+                )
+            else
+                eprint(v, 'skip')
+            end
         end
     end
 end
 
 io.stdout:write('matrix=', enc_tbl(m), '\n')
+io.stdout:write('rebuild=', tostring(#m.include > 0), '\n')

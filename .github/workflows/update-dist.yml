@@ -11,26 +11,12 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             matrix: ${{ steps.get-matrix.outputs.matrix }}
+            rebuild: ${{ steps.get-matrix.outputs.rebuild }}
         steps:
             - uses: actions/checkout@v3
             - uses: ./.github/actions/lua/install
               with:
                   packages: ("luafilesystem")
-            - uses: ./.github/actions/lua/add-bin
-              with:
-                  src: "${{ github.workspace }}/misc"
-                  scripts: ("get-matrix")
-            - id: get-matrix
-              run: |
-                  get-matrix >> $GITHUB_OUTPUT
-
-    prepare-setup:
-        runs-on: ubuntu-latest
-        needs: [get-matrix]
-        outputs:
-           checksum: ${{ steps.checksum.outputs.checksum }}
-        steps:
-            - uses: actions/checkout@v3
 
             - uses: actions/cache@v3
               id: cache
@@ -40,16 +26,14 @@ jobs:
                       misc/setup/.install
                   key: setup-${{ hashFiles('misc/setup/setup.lua', 'misc/setup/.install') }}
 
-            - uses: ./.github/actions/lua/install
-              if: steps.cache.outputs.cache-hit != 'true'
-              with:
-                  packages: ("luafilesystem")
-
             - uses: ./.github/actions/lua/add-path
               if: steps.cache.outputs.cache-hit != 'true'
               with:
                   path: "${{ github.workspace }}/libpack/data/lib/?.lua;${{ github.workspace }}/libpack/data/lib/?/init.lua"
-
+            - uses: ./.github/actions/lua/add-bin
+              with:
+                  src: "${{ github.workspace }}/misc"
+                  scripts: ("get-matrix")
             - uses: ./.github/actions/lua/add-bin
               if: steps.cache.outputs.cache-hit != 'true'
               with:
@@ -65,10 +49,10 @@ jobs:
               run: |
                   tar -cvf setup.tar -C misc/setup .install setup.lua
 
-            - id: checksum
+            - id: get-matrix
               run: |
                   checksum=($(md5sum setup.tar))
-                  echo "checksum=$checksum" >> $GITHUB_OUTPUT
+                  get-matrix $checksum >> $GITHUB_OUTPUT
 
             - uses: actions/upload-artifact@v3
               with:
@@ -77,8 +61,9 @@ jobs:
                   retention-days: 1
 
     create-tarballs:
+        if: needs.get-matrix.outputs.rebuild == 'true'
         runs-on: ubuntu-latest
-        needs: [get-matrix, prepare-setup]
+        needs: [get-matrix]
         strategy:
             matrix: ${{ fromJSON(needs.get-matrix.outputs.matrix) }}
         steps:
@@ -89,46 +74,56 @@ jobs:
                   sparse-checkout: |
                       .github
                       libpack
-                      dist/.${{ matrix.program }}.sum
                       ${{ matrix.program }}
 
-            - id: checksum
-              run: |
-                datChecksum=($(find ${{ matrix.program }} -type f -exec md5sum {} \; | md5sum))
-                if [[ $isSetup == "true" ]]; then newChecksum=($(echo "$datChecksum-$setChecksum" | md5sum)); else newChecksum="$datChecksum"; fi
-                oldChecksum=$([[ -e $sumFile ]] && cat $sumFile  || echo '0')
-                if [[ "$newChecksum" == "$oldChecksum" ]]; then echo "rebuild=false" >> $GITHUB_OUTPUT; else echo "rebuild=true" >> $GITHUB_OUTPUT; fi
-                echo "checksum=$newChecksum" >> $GITHUB_OUTPUT
-                echo "Set: $setChecksum"
-                echo "Dat: $datChecksum"
-                echo "New: $newChecksum"
-                echo "Old: $oldChecksum"
-              env:
-                sumFile: "dist/.${{ matrix.program }}.sum"
-                isSetup: "${{ matrix.setup }}"
-                setChecksum: "${{ needs.prepare-setup.outputs.checksum }}"
-
-            - run: echo "Unchanged - Skipping"
-              if: steps.checksum.outputs.rebuild == 'false'
-              
             - uses: ./.github/actions/lua/install
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.minified == true
+              if: matrix.minified == true
               with:
                   packages: ("luafilesystem")
 
             - uses: ./.github/actions/lua/add-bin
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.minified == true
+              if: matrix.minified == true
               with:
                   src: "${{ github.workspace }}/libpack/data/bin"
                   scripts: ("luamin")
 
             - uses: ./.github/actions/lua/add-path
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.minified == true
+              if: matrix.minified == true
               with:
                   path: "${{ github.workspace }}/libpack/data/lib/?.lua;${{ github.workspace }}/libpack/data/lib/?/init.lua"
 
-            - name: Minify
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.minified
+            - name: Download Setup Files
+              uses: actions/download-artifact@v3
+              if: matrix.setup == true
+              with:
+                  name: setup-files
+
+            - name: Extract Setup Files
+              if: matrix.setup == true
+              run: |
+                  echo Extracting Setup files
+                  mkdir -p .setup
+                  tar -xvf setup.tar -C .setup
+
+            - name: Create Tarball
+              if: matrix.regular == true
+              id: tarball
+              run: |
+                  mkdir -p .setup
+                  tar \
+                      --sort=name --owner=root:0 --group=root:0 --mtime='1970-01-01 00:00:00' \
+                      --exclude=.min --exclude=.dist \
+                      -cvf $TARFILE \
+                      -C $INPUT_ROOT . \
+                      -C $SETUP_ROOT .
+                  echo "path=$TARFILE" >> $GITHUB_OUTPUT
+              env:
+                  TARFILE: "${{ runner.temp }}/${{ matrix.program }}.tar"
+                  INPUT_ROOT: "${{ github.workspace }}/${{ matrix.program }}"
+                  SETUP_ROOT: "${{ github.workspace }}/.setup"
+
+            - name: Minify Sources
+              if: matrix.minified == true
               run: |
                   echo Minifying
                   (pushd ${{ matrix.program }} && \
@@ -136,63 +131,45 @@ jobs:
                       xargs -0 -i sh -c 'echo -n "$1..."; luamin "$1" "$1" || exit 255' sh {} \
                   )
 
-            - name: Download Setup Files
-              uses: actions/download-artifact@v3
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.setup == true
-              with:
-                  name: setup-files
-
-            - name: Extract Setup Files
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.setup == true
+            - name: Create Minified Tarball
+              if: matrix.minified == true
+              id: tarball-min
               run: |
-                  echo Extracting Setup files
-                  tar -xvf setup.tar -C ${{ matrix.program }}
-
-            - name: Create Tarball
-              if: steps.checksum.outputs.rebuild == 'true'
-              id: tarball
-              run: |
-                  mkdir -p dist
+                  mkdir -p .setup
                   tar \
                       --sort=name --owner=root:0 --group=root:0 --mtime='1970-01-01 00:00:00' \
                       --exclude=.min --exclude=.dist \
                       -cvf $TARFILE \
-                      -C $INPUT_ROOT .
+                      -C $INPUT_ROOT . \
+                      -C $SETUP_ROOT .
                   echo "path=$TARFILE" >> $GITHUB_OUTPUT
               env:
-                  TARFILE: "${{ runner.temp }}/${{ matrix.program }}${{ matrix.minified && '.min.tar' || '.tar' }}"
+                  TARFILE: "${{ runner.temp }}/${{ matrix.program }}.min.tar"
                   INPUT_ROOT: "${{ github.workspace }}/${{ matrix.program }}"
+                  SETUP_ROOT: "${{ github.workspace }}/.setup"
 
             - name: Update Checksum
-              if: steps.checksum.outputs.rebuild == 'true'
               id: checksum-file
               run: |
-                  echo "${{ steps.checksum.outputs.checksum }}" >> $sumFile
+                  echo "${{ matrix.checksum }}" >> $sumFile
                   echo "path=$sumFile" >> $GITHUB_OUTPUT
               env:
                   sumFile: "${{ runner.temp }}/.${{ matrix.program }}.sum"
 
             - name: Upload Tarball
               uses: actions/upload-artifact@v3
-              if: steps.checksum.outputs.rebuild == 'true'
               with:
                   name: tarballs
                   path: |
                       ${{ steps.tarball.outputs.path }}
-                  retention-days: 1
-
-            - name: Upload Checkfile
-              uses: actions/upload-artifact@v3
-              if: steps.checksum.outputs.rebuild == 'true' && matrix.writechk == true
-              with:
-                  name: tarballs
-                  path: |
+                      ${{ steps.tarball-min.outputs.path }}
                       ${{ steps.checksum-file.outputs.path }}
                   retention-days: 1
 
     update-dist:
         runs-on: ubuntu-latest
-        needs: [create-tarballs]
+        needs: [get-matrix, create-tarballs]
+        if: always()
         permissions:
             contents: write
             pull-requests: write
@@ -200,13 +177,13 @@ jobs:
             - uses: actions/checkout@v3
 
             - name: Download Artifacts
+              if: needs.get-matrix.outputs.rebuild == 'true'
               uses: actions/download-artifact@v3
               with:
                   name: tarballs
                   path: dist/
 
             - name: Create Pull Request
-              if: always()
               uses: peter-evans/create-pull-request@v5
               with:
                   title: Update Dist Files
