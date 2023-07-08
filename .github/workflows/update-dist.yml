@@ -99,15 +99,23 @@ jobs:
 
             - id: checksum
               run: |
-                dataChecksum=($(find ${{ matrix.program }} -type f -exec md5sum {} \; | md5sum))
-                if [[ $ISSETUP == "true" ]]; then newChecksum=($(echo "$dataChecksum-$setupChecksum" | md5sum)); fi
-                oldChecksum=$([[ -e $CHKFILE ]] && cat $CHKFILE  || echo '0')
+                datChecksum=($(find ${{ matrix.program }} -type f -exec md5sum {} \; | md5sum))
+                if [[ $isSetup == "true" ]]; then newChecksum=($(echo "$datChecksum-$setChecksum" | md5sum)); else newChecksum="$datChecksum"; fi
+                oldChecksum=$([[ -e $sumFile ]] && cat $sumFile  || echo '0')
                 if [[ "$newChecksum" == "$oldChecksum" ]]; then echo "rebuild=false" >> $GITHUB_OUTPUT; else echo "rebuild=true" >> $GITHUB_OUTPUT; fi
                 echo "checksum=$newChecksum" >> $GITHUB_OUTPUT
+                echo "Set: $setChecksum"
+                echo "Dat: $datChecksum"
+                echo "New: $newChecksum"
+                echo "Old: $oldChecksum"
               env:
-                CHKFILE: "dist/.${{ matrix.program }}.sum"
-                ISSETUP: "${{ matrix.setup }}"
+                sumFile: "dist/.${{ matrix.program }}.sum"
+                isSetup: "${{ matrix.setup }}"
+                setChecksum: "${{ needs.prepare-setup.outputs.checksum }}"
 
+            - run: echo "Unchanged - Skipping"
+              if: steps.checksum.outputs.rebuild == 'false'
+              
             - uses: ./.github/actions/lua/install
               if: steps.checksum.outputs.rebuild == 'true' && matrix.minified == true
               with:
@@ -164,10 +172,10 @@ jobs:
               if: steps.checksum.outputs.rebuild == 'true'
               id: checksum-file
               run: |
-                  echo "${{ steps.checksum.outputs.checksum }}" >> $CHKFILE
-                  echo "path=$CHKFILE" >> $GITHUB_OUTPUT
+                  echo "${{ steps.checksum.outputs.checksum }}" >> $sumFile
+                  echo "path=$sumFile" >> $GITHUB_OUTPUT
               env:
-                  CHKFILE: "${{ runner.temp }}/.${{ matrix.program }}.sum"
+                  sumFile: "${{ runner.temp }}/.${{ matrix.program }}.sum"
 
             - name: Upload Tarball
               uses: actions/upload-artifact@v3
@@ -210,3 +218,4 @@ jobs:
                   commit-message: "Update dist files"
                   reviewers: usagirei
                   branch: cpr/dist
+                  delete-branch: true
