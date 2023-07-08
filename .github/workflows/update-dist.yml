@@ -70,6 +70,7 @@ jobs:
               with:
                   name: setup-files
                   path: setup.tar
+                  retention-days: 1
 
     create-tarballs:
         runs-on: ubuntu-latest
@@ -147,6 +148,7 @@ jobs:
                   name: tarballs
                   path: |
                       ${{ steps.tarball.outputs.path }}
+                  retention-days: 1
 
             - name: Get Revision
               if: ${{ matrix.writerev }}
@@ -163,6 +165,7 @@ jobs:
                   name: tarballs
                   path: |
                       ${{ steps.get-rev.outputs.path }}
+                  retention-days: 1
 
     update-dist:
         runs-on: ubuntu-latest
