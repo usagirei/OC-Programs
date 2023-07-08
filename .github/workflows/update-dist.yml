@@ -85,17 +85,11 @@ jobs:
             - run: echo Bundling ${{ matrix.program }}
 
             - uses: actions/checkout@v3
-              if: matrix.minified == true
               with:
                   sparse-checkout: |
                       .github
                       libpack
-                      dist/*.sum
-                      ${{ matrix.program }}
-            - uses: actions/checkout@v3
-              if: matrix.minified == false
-              with:
-                  sparse-checkout: |
+                      dist/.${{ matrix.program }}.sum
                       ${{ matrix.program }}
 
             - id: checksum
