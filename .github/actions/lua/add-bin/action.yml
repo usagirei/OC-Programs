@@ -1,0 +1,34 @@
+name: Add Lua Bin
+description: Patch Lua Script with a shebang, and add to path
+
+inputs:
+    src:
+        description: "Scripts Source Path"
+        required: true
+    scripts:
+        description: "Script Names"
+        required: true
+runs:
+    using: "composite"
+    steps:
+        - run: |
+              [[ ":$PATH:" != *":$BIN_PATH"* ]] && echo "PATH=$PATH:$BIN_PATH" >> $GITHUB_ENV
+              mkdir -p $BIN_PATH 
+              files=${{ inputs.scripts }}
+              for f in "${files[@]}"
+              do
+                  fs="$SRC_PATH/$f"
+                  if ([[ ! -e "$fs" ]] && [[ -e "$fs.lua" ]]) then 
+                      f="$f.lua"
+                  else
+                      echo "no such file: $f / $f.lua"
+                      exit 255
+                  fi
+                  fs="$SRC_PATH/$f"
+                  fd="$BIN_PATH/${f%.lua}"
+                  sed "1i#!/usr/bin/env lua" "$fs" > "$fd" && chmod +x "$fd"  && echo "Patched $f"
+              done;
+          shell: bash
+          env:
+              SRC_PATH: "${{ inputs.src }}"
+              BIN_PATH: "${{ runner.temp }}/luabin"

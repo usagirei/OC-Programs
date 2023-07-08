@@ -1,0 +1,177 @@
+name: Update Dist
+
+on:
+    push:
+        branches:
+            - master
+    workflow_dispatch:
+
+jobs:
+    get-matrix:
+        runs-on: ubuntu-latest
+        outputs:
+            matrix: ${{ steps.get-matrix.outputs.matrix }}
+            build: ${{ steps.get-matrix.outputs.build }}
+            setup: ${{ steps.get-matrix.outputs.setup }}
+        steps:
+            - uses: actions/checkout@v3
+            - uses: ./.github/actions/lua/install
+              with:
+                  packages: ("luafilesystem")
+            - uses: ./.github/actions/lua/add-bin
+              with:
+                  src: "${{ github.workspace }}/misc"
+                  scripts: ("get-matrix")
+            - id: get-matrix
+              run: |
+                  get-matrix
+
+    prepare-setup:
+        runs-on: ubuntu-latest
+        needs: [get-matrix]
+        if: ${{ needs.get-matrix.outputs.build == 'true' }}
+        steps:
+            - uses: actions/checkout@v3
+
+            - uses: actions/cache@v3
+              id: cache
+              with:
+                  path: |
+                      misc/setup/setup.lua
+                      misc/setup/.install
+                  key: setup-${{ hashFiles('misc/setup/setup.lua', 'misc/setup/.install') }}
+
+            - uses: ./.github/actions/lua/install
+              if: steps.cache.outputs.cache-hit != 'true'
+              with:
+                  packages: ("luafilesystem")
+
+            - uses: ./.github/actions/lua/add-path
+              if: steps.cache.outputs.cache-hit != 'true'
+              with:
+                  path: "${{ github.workspace }}/libpack/data/lib/?.lua;${{ github.workspace }}/libpack/data/lib/?/init.lua"
+
+            - uses: ./.github/actions/lua/add-bin
+              if: steps.cache.outputs.cache-hit != 'true'
+              with:
+                  src: "${{ github.workspace }}/libpack/data/bin"
+                  scripts: ("luapack" "luamin")
+
+            - name: Pack Setup
+              if: steps.cache.outputs.cache-hit != 'true'
+              run: |
+                  (cd 'misc/setup'; luapack)
+
+            - name: Bundle Files
+              run: |
+                  tar -cvf setup.tar -C misc/setup .install setup.lua
+
+            - uses: actions/upload-artifact@v3
+              with:
+                  name: setup-files
+                  path: setup.tar
+
+    create-tarballs:
+        runs-on: ubuntu-latest
+        needs: [get-matrix, prepare-setup]
+        if: ${{ needs.get-matrix.outputs.build == 'true' }}
+        strategy:
+            matrix: ${{ fromJSON(needs.get-matrix.outputs.matrix) }}
+        steps:
+            - run: echo Bundling ${{ matrix.program }}
+
+            - uses: actions/checkout@v3
+              with:
+                  sparse-checkout: ${{ matrix.program }}
+
+            - uses: ./.github/actions/lua/install
+              if: ${{ matrix.minified }}
+              with:
+                  packages: ("luafilesystem")
+
+            - uses: ./.github/actions/lua/add-bin
+              if: ${{ matrix.minified }}
+              with:
+                  src: "${{ github.workspace }}/libpack/data/bin"
+                  scripts: ("luamin")
+
+            - uses: ./.github/actions/lua/add-path
+              if: ${{ matrix.minified }}
+              with:
+                  path: "${{ github.workspace }}/libpack/data/lib/?.lua;${{ github.workspace }}/libpack/data/lib/?/init.lua"
+
+            - name: Minify
+              if: ${{ matrix.minified }}
+              run: |
+                  echo Minifying
+                  (pushd ${{ matrix.program }} && \
+                      find . -type f -name "*.lua" -printf '%P\0' | \
+                      xargs -0 -i sh -c 'echo -n "$1..."; luamin "$1" "$1" || exit 255' sh {} \
+                  )
+
+            - uses: actions/download-artifact@v3
+              if: ${{ matrix.setup }}
+              with:
+                  name: setup-files
+
+            - if: ${{ matrix.setup }}
+              run: |
+                  echo Extracting Setup files
+                  tar -xvf setup.tar -C ${{ matrix.program }}
+
+            - name: Create Tarball
+              id: tarball
+              run: |
+                  mkdir -p dist
+                  tar \
+                      --sort=name --owner=root:0 --group=root:0 --mtime='1970-01-01 00:00:00' \
+                      --exclude=.min --exclude=.dist \
+                      -cvf $TARFILE \
+                      -C $INPUT_ROOT .
+                  echo "path=$TARFILE" >> $GITHUB_OUTPUT
+              env:
+                  TARFILE: "${{ runner.temp }}/${{ matrix.program }}${{ matrix.minified && '.min.tar' || '.tar' }}"
+                  INPUT_ROOT: "${{ github.workspace }}/${{ matrix.program }}"
+
+            - uses: actions/upload-artifact@v3
+              with:
+                  name: tarballs
+                  path: |
+                      ${{ steps.tarball.outputs.path }}
+
+            - name: Get Revision
+              if: ${{ matrix.writerev }}
+              id: get-rev
+              run: |
+                  git rev-parse HEAD >> $REVFILE
+                  echo "path=$REVFILE" >> $GITHUB_OUTPUT
+              env:
+                  REVFILE: "${{ runner.temp }}/.${{ matrix.program }}.rev"
+
+            - uses: actions/upload-artifact@v3
+              if: ${{ matrix.writerev }}
+              with:
+                  name: tarballs
+                  path: |
+                      ${{ steps.get-rev.outputs.path }}
+
+    update-dist:
+        runs-on: ubuntu-latest
+        needs: [create-tarballs]
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Download Artifacts
+              uses: actions/download-artifact@v3
+              with:
+                  name: tarballs
+                  path: dist/
+
+            - name: Create Pull Request
+              uses: peter-evans/create-pull-request@v5
+              with:
+                  title: Update Dist Files
+                  add-paths: dist
+                  commit-message: "Update dist files"
+                  reviewers: usagirei
+                  branch: cpr/dist

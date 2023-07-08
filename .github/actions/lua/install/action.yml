@@ -1,0 +1,57 @@
+name: Install Lua
+description: Install Lua + LuaRocks packages
+
+inputs:
+    packages:
+        description: LuaRocks packages
+        required: false
+
+runs:
+    using: "composite"
+    steps:
+        # Install Lua
+        - uses: leafo/gh-actions-lua@v10
+          id: setup-lua
+          with:
+              luaVersion: "5.3"
+
+        # Install LuaRocks + Packages
+        - name: luarocks cache key
+          run: |
+              LUAROCKS_CACHE=($(md5sum <<< "${{ github.workspace }}+${{ inputs.packages }}"))
+              echo "luarocks-cache=$LUAROCKS_CACHE" >> $GITHUB_ENV
+          shell: bash
+        
+        - uses: actions/cache@v3
+          name: Cache LuaRocks
+          id: cache-luarocks
+          with:
+              path: |
+                  .luarocks
+              key: luarocks:5.3:${{ runner.os }}:${{ runner.arch }}+${{ env.luarocks-cache }}
+        - uses: leafo/gh-actions-luarocks@v4
+          if: steps.cache-luarocks.outputs.cache-hit != 'true'
+
+        - name: restore path
+          if: steps.cache-luarocks.outputs.cache-hit == 'true'
+          run: |
+              echo "${{ github.workspace }}/.lua/bin" >> $GITHUB_PATH
+              echo "${{ github.workspace }}/.luarocks/bin" >> $GITHUB_PATH
+          shell: bash
+
+        - name: restore lua path
+          if: steps.cache-luarocks.outputs.cache-hit == 'true'
+          run: |
+              echo "LUA_PATH=$(luarocks path --lr-path)" >> $GITHUB_ENV
+              echo "LUA_CPATH=$(luarocks path --lr-cpath)" >> $GITHUB_ENV
+          shell: bash
+
+        - name: Installing Packages
+          if: inputs.packages && steps.cache-luarocks.outputs.cache-hit != 'true'
+          run: |
+              packages=${{ inputs.packages }}
+              for p in "${packages[@]}"
+              do
+                  luarocks install $p
+              done
+          shell: bash

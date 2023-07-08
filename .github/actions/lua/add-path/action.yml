@@ -1,0 +1,15 @@
+name: Add Lua Path
+description: Adds a search path to lua path
+
+inputs:
+    path:
+        description: "Lua Path"
+        required: false
+runs:
+    using: "composite"
+    steps:
+        - run: |
+              [[ ":$LUA_PATH:" != *":$EXTRA_PATH"* ]] && echo "LUA_PATH=$LUA_PATH;$EXTRA_PATH" >> $GITHUB_ENV
+          env:
+              EXTRA_PATH: "${{ inputs.path }}"
+          shell: bash
